@@ -5,6 +5,7 @@ import type {
   TranscribeModel,
 } from "transcribe-cpp";
 import { convertChineseOutput, isChineseLanguage } from "./chinese.js";
+import { logLevel, writeLog, type LogLevel } from "./log.js";
 import type { ChineseOutput } from "./settings.js";
 
 export type TranscriptionOptions = {
@@ -96,6 +97,20 @@ class TranscribeCppDictationStream implements DictationStream {
   }
 }
 
+// transcribe-cpp's levels (TRANSCRIBE_LOG_LEVEL_*). Its info is a screenful
+// of GPU setup on every model load, so it goes to debug.
+const TRANSCRIBE_LEVELS: Record<number, LogLevel> = { 1: "debug", 2: "warn", 3: "error", 4: "debug" };
+const TRANSCRIBE_CONTINUATION = 5;
+let lastTranscribeLevel: LogLevel = "debug";
+
+function routeTranscribeLog(setLogHandler: typeof import("transcribe-cpp").setLogHandler): void {
+  if (!logLevel()) return;
+  setLogHandler((level, message) => {
+    if (level !== TRANSCRIBE_CONTINUATION) lastTranscribeLevel = TRANSCRIBE_LEVELS[level] ?? "debug";
+    writeLog(lastTranscribeLevel, "transcribe", message);
+  });
+}
+
 /** A reusable loaded transcribe.cpp model. Calls must be scheduled sequentially. */
 export class TranscribeCppBackend {
   private model: TranscribeModel | undefined;
@@ -110,7 +125,10 @@ export class TranscribeCppBackend {
 
     if (!this.loading) {
       this.loading = import("transcribe-cpp")
-        .then(({ TranscribeModel }) => TranscribeModel.load(this.modelPath))
+        .then(({ TranscribeModel, setLogHandler }) => {
+          routeTranscribeLog(setLogHandler);
+          return TranscribeModel.load(this.modelPath);
+        })
         .then((model) => {
           if (this.disposed) {
             model.dispose();

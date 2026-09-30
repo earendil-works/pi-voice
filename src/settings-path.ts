@@ -11,3 +11,9 @@ export function settingsPath(): string {
 export function legacySettingsPath(): string {
   return join(getAgentDir(), LEGACY_SETTINGS_FILENAME);
 }
+
+export const LOG_FILENAME = "pi-voice.log";
+
+export function logPath(): string {
+  return join(getAgentDir(), LOG_FILENAME);
+}
