@@ -5,7 +5,7 @@ import type {
   TranscribeModel,
 } from "transcribe-cpp";
 import { convertChineseOutput, isChineseLanguage } from "./chinese.js";
-import { logLevel, writeLog, type LogLevel } from "./log.js";
+import { writeLog, type LogLevel } from "./log.js";
 import type { ChineseOutput } from "./settings.js";
 
 export type TranscriptionOptions = {
@@ -104,7 +104,6 @@ const TRANSCRIBE_CONTINUATION = 5;
 let lastTranscribeLevel: LogLevel = "debug";
 
 function routeTranscribeLog(setLogHandler: typeof import("transcribe-cpp").setLogHandler): void {
-  if (!logLevel()) return;
   setLogHandler((level, message) => {
     if (level !== TRANSCRIBE_CONTINUATION) lastTranscribeLevel = TRANSCRIBE_LEVELS[level] ?? "debug";
     writeLog(lastTranscribeLevel, "transcribe", message);

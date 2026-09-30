@@ -2,8 +2,8 @@ import { appendFileSync, mkdirSync, renameSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 
 /**
- * Pi Voice's diagnostic log (~/.pi/agent/pi-voice.log). 
- * On by default at info, debug level with PI_VOICE_DEBUG=1 
+ * Pi Voice's diagnostic log (~/.pi/agent/pi-voice.log).
+ * On by default at info, debug level with PI_VOICE_DEBUG=1
  * Does not log transcripts or audio.
  */
 
@@ -15,7 +15,7 @@ const RANK: Record<LogLevel, number> = { error: 0, warn: 1, info: 2, debug: 3 };
 /** Past this the file moves to `.1`, replacing the previous one. */
 const MAX_BYTES = 1024 * 1024;
 
-type Sink = { path: string; level: LogLevel; bytes: number | undefined; failed: boolean };
+type Sink = { path: string; level: LogLevel; opened: boolean; failed: boolean };
 let sink: Sink | undefined;
 
 export function initLog(options: { path: string; level: LogLevel }): void {
@@ -23,7 +23,7 @@ export function initLog(options: { path: string; level: LogLevel }): void {
     sink.level = options.level;
     return;
   }
-  sink = { path: options.path, level: options.level, bytes: undefined, failed: false };
+  sink = { path: options.path, level: options.level, opened: false, failed: false };
 }
 
 /** Stops logging and the event-loop watch. */
@@ -40,27 +40,26 @@ export function logLevel(): LogLevel | undefined {
   return sink?.level;
 }
 
-export function logEnabled(level: LogLevel): boolean {
+function logEnabled(level: LogLevel): boolean {
   return sink !== undefined && RANK[level] <= RANK[sink.level];
 }
 
 function append(sink: Sink, line: string): void {
-  if (sink.bytes === undefined) {
+  if (!sink.opened) {
     mkdirSync(dirname(sink.path), { recursive: true });
-    try {
-      sink.bytes = statSync(sink.path).size;
-    } catch {
-      sink.bytes = 0;
-    }
+    sink.opened = true;
     const runtime = process.versions.bun ? `bun ${process.versions.bun}` : `node ${process.versions.node}`;
     line = `${format("info", "voice", `pi-voice log opened (${runtime}, ${process.platform}-${process.arch}, level ${sink.level})`)}${line}`;
   }
-  if (sink.bytes + line.length > MAX_BYTES && sink.bytes > 0) {
-    renameSync(sink.path, `${sink.path}.1`);
-    sink.bytes = 0;
+  // Sized on every write: other Pi processes append to and rotate this file too.
+  try {
+    const size = statSync(sink.path).size;
+    if (size > 0 && size + Buffer.byteLength(line) > MAX_BYTES) renameSync(sink.path, `${sink.path}.1`);
+  } catch (error) {
+    // No file yet, or another process rotated it first.
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
   appendFileSync(sink.path, line);
-  sink.bytes += Buffer.byteLength(line);
 }
 
 function format(level: LogLevel, source: LogSource, message: string, timeMs = Date.now()): string {
@@ -89,7 +88,8 @@ export const log = {
 export function describeError(error: unknown): string {
   if (!(error instanceof Error)) return String(error);
   const { code } = error as Error & { code?: unknown };
-  return typeof code === "string" ? `${code}: ${error.message}` : error.message;
+  // Node's own errors already lead with their code.
+  return typeof code === "string" && !error.message.startsWith(code) ? `${code}: ${error.message}` : error.message;
 }
 
 // Steps: what Pi Voice is doing, so a blocked event loop can say where.
