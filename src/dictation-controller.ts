@@ -1,4 +1,5 @@
 import { CAPTURE_SAMPLE_RATE } from "./audio-constants.js";
+import { describeError, log, logStep, sinceKeyPress } from "./log.js";
 import { PcmChunker } from "./pcm-chunker.js";
 import type { MicrophoneSetting, TranscribeSettings } from "./settings.js";
 import type { DictationReservation, TranscriptionService } from "./transcription-service.js";
@@ -59,6 +60,10 @@ export class DictationController {
   private setState(state: DictationState): void {
     if (this.disposed) return;
     this.current = state;
+    if (state.phase === "error") {
+      log.error(`${state.stage} failed: ${describeError(state.cause)}`);
+      logStep("idle");
+    }
     this.notify();
   }
 
@@ -69,6 +74,8 @@ export class DictationController {
     this.take?.reservation.cancel();
     this.take = undefined;
     this.readiness = "loading";
+    logStep("reserving model", settings.model.id);
+    const reservedAt = this.now();
     let reservation: DictationReservation;
     try {
       reservation = this.service.reserveDictation(settings);
@@ -86,6 +93,7 @@ export class DictationController {
     void reservation.ready.then(
       () => {
         if (this.disposed || this.take !== take) return;
+        log.debug(`model ready ${Math.round(this.now() - reservedAt)} ms after reserving`);
         this.readiness = "ready";
         this.notify();
       },
@@ -93,7 +101,10 @@ export class DictationController {
         if (this.disposed || this.take !== take) return;
         this.readiness = "failed";
         if (this.current.phase === "ready") this.setState({ phase: "error", stage: "model", cause });
-        else this.notify(); // Keep capturing; submission will report the error.
+        else {
+          log.error(`model failed to load: ${describeError(cause)}`);
+          this.notify(); // Keep capturing; submission will report the error.
+        }
       },
     );
   }
@@ -108,6 +119,8 @@ export class DictationController {
     this.setState({ phase: "starting" });
     const work = this.cleanup.then(() => {
       if (this.disposed || this.take !== take) return;
+      const openedAt = this.now();
+      logStep("opening microphone");
       try {
         const capture = this.options.createCapture(settings.microphone);
         capture.onFrame = (frame) => {
@@ -118,6 +131,10 @@ export class DictationController {
         capture.start();
         take.capture = capture;
         this.startedAt = this.now();
+        const sincePress = sinceKeyPress();
+        const press = sincePress === undefined ? "" : `, ${Math.round(sincePress)} ms after the key press`;
+        log.info(`listening: microphone opened in ${Math.round(this.startedAt - openedAt)} ms${press}; model ${this.readiness}`);
+        logStep("listening");
         this.setState({ phase: "listening" });
       } catch (cause) {
         this.take = undefined;
@@ -148,6 +165,7 @@ export class DictationController {
     if (take.submission) return take.submission;
     if (this.current.phase !== "listening") return Promise.resolve(undefined);
     const stoppedAt = this.now();
+    logStep("stopping microphone");
     this.setState({ phase: "transcribing" });
     let stage: "capture" | "transcription" = "capture";
     take.submission = this.stopCapture(take).then(async ({ pcm }) => {
@@ -155,6 +173,7 @@ export class DictationController {
       if (this.take !== take || take.abort.signal.aborted) return undefined;
       take.chunker.flush();
       stage = "transcription";
+      logStep("transcribing", `${(pcm.length / CAPTURE_SAMPLE_RATE).toFixed(1)} s of audio`);
       const text = await take.reservation.submit(pcm, take.abort.signal);
       if (this.disposed || this.take !== take || take.abort.signal.aborted) return undefined;
       const result = {
@@ -163,6 +182,11 @@ export class DictationController {
         transcribeSeconds: Math.max(0, (this.now() - stoppedAt) / 1000),
       };
       this.take = undefined;
+      const empty = text ? "" : "; no speech detected";
+      log.info(
+        `transcribed ${result.speechSeconds.toFixed(1)} s of audio in ${result.transcribeSeconds.toFixed(1)} s${empty}`,
+      );
+      logStep("idle");
       this.setState({ phase: "result", result });
       return result;
     }).catch((cause: unknown) => {
@@ -183,6 +207,9 @@ export class DictationController {
     take.abort.abort();
     take.chunker.discard();
     take.reservation.cancel();
+    if (take.submission) log.info("transcription cancelled");
+    else if (take.capture) log.info("recording discarded");
+    logStep("idle");
     this.setState({ phase: "cancelling" });
     const cleanup = Promise.all([
       this.cleanup,

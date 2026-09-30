@@ -7,6 +7,7 @@ import {
   type TUI,
 } from "@earendil-works/pi-tui";
 import { createMicrophoneCapture, testMicrophonePermission } from "./audio.js";
+import { markKeyPress, watchEventLoop } from "./log.js";
 import { getCatalogModel } from "./catalog.js";
 import { DictationController, type DictationControllerOptions } from "./dictation-controller.js";
 import { microphoneSummary } from "./microphone-picker.js";
@@ -66,6 +67,8 @@ export class TryItPane implements Component {
   private showMacPermissionNote: boolean;
   private recordingAttempted = false;
   private modelPreparationScheduled = false;
+  /** Onboarding loads models in the background; watch the loop while it's up. */
+  private readonly unwatch = watchEventLoop();
 
   constructor(
     private readonly tui: TUI,
@@ -249,6 +252,7 @@ export class TryItPane implements Component {
   }
 
   private start(): void {
+    markKeyPress();
     this.recordingAttempted = true;
     this.showMacPermissionNote = false;
     this.preview.setText("");
@@ -302,6 +306,7 @@ export class TryItPane implements Component {
 
   dispose(): Promise<void> {
     this.disposed = true;
+    this.unwatch();
     return this.dictation.dispose();
   }
 }

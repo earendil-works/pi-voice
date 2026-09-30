@@ -8,12 +8,15 @@ import {
 } from "./install-migration.js";
 import type { PiVoiceRuntime } from "./runtime.js";
 import { displayShortcut, STATUS_WIDGET_KEY } from "./shortcut-core.js";
-import { legacySettingsPath, settingsPath } from "./settings-path.js";
+import { initLog, log, logStep, markKeyPress, watchEventLoop } from "./log.js";
+import { legacySettingsPath, logPath, settingsPath } from "./settings-path.js";
 import { readShortcutForRegistration } from "./startup-shortcut.js";
 
 // Pi awaits extension module evaluation before continuing startup. Keep this
 // entry point registration-only and load feature implementations on first use.
 export default function piVoice(pi: ExtensionAPI): void {
+  // Opens nothing yet: the first line written creates the file.
+  initLog({ path: logPath(), level: process.env.PI_VOICE_DEBUG === "1" ? "debug" : "info" });
   const registeredShortcut = readShortcutForRegistration();
   let runtimePromise: Promise<PiVoiceRuntime> | undefined;
   let shuttingDown = false;
@@ -22,9 +25,12 @@ export default function piVoice(pi: ExtensionAPI): void {
     if (shuttingDown) return Promise.reject(new Error("Pi Voice is shutting down"));
     if (runtimePromise) return runtimePromise;
 
-    const loading = import("./runtime.js").then(({ createPiVoiceRuntime }) =>
-      createPiVoiceRuntime(pi, registeredShortcut),
-    );
+    const loadStarted = performance.now();
+    logStep("loading runtime");
+    const loading = import("./runtime.js").then(({ createPiVoiceRuntime }) => {
+      log.debug(`runtime loaded in ${Math.round(performance.now() - loadStarted)} ms`);
+      return createPiVoiceRuntime(pi, registeredShortcut);
+    });
     runtimePromise = loading;
     void loading.catch(() => {
       if (runtimePromise === loading) runtimePromise = undefined;
@@ -64,6 +70,8 @@ export default function piVoice(pi: ExtensionAPI): void {
     {
       description: "Toggle microphone transcription",
       handler: async (ctx) => {
+        markKeyPress();
+        const release = watchEventLoop();
         // The first press pays deferred module loading before the runtime can
         // show anything; paint feedback synchronously. Later presses reach the
         // memoized runtime in a microtask and it paints its own status.
@@ -77,6 +85,8 @@ export default function piVoice(pi: ExtensionAPI): void {
         } catch (error) {
           if (ctx.hasUI) ctx.ui.setWidget(STATUS_WIDGET_KEY, undefined);
           throw error;
+        } finally {
+          release();
         }
       },
     },
