@@ -2,13 +2,9 @@ import { appendFileSync, mkdirSync, renameSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 
 /**
- * Pi Voice's diagnostic log (~/.pi/agent/pi-voice.log): always on at info, a
- * few lines per dictation; everything with PI_VOICE_DEBUG=1. It never holds
- * transcripts or audio.
- *
- * Lines are appended synchronously, so the ones before a freeze or a crash
- * are on disk. Nothing is written until `initLog`, so tests and tools that
- * import modules directly leave the log alone.
+ * Pi Voice's diagnostic log (~/.pi/agent/pi-voice.log). 
+ * On by default at info, debug level with PI_VOICE_DEBUG=1 
+ * Does not log transcripts or audio.
  */
 
 export type LogLevel = "error" | "warn" | "info" | "debug";
