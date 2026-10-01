@@ -1,9 +1,7 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { getAvailableMicrophones, testMicrophonePermission } from "./audio.js";
+import { getAvailableMicrophones, type InputDevice, type Permission } from "./audio.js";
 import type { MicrophoneSetting } from "./settings.js";
 import { SingleSelectPicker, type SingleSelectChoice } from "./ui-components.js";
-
-export type MicrophonePermission = Awaited<ReturnType<typeof testMicrophonePermission>>;
 
 export function microphoneSummary(microphone: MicrophoneSetting): string {
   if (microphone.type === "system-default") return "System default";
@@ -22,7 +20,7 @@ export function microphonesEqual(left: MicrophoneSetting, right: MicrophoneSetti
 }
 
 function microphoneChoices(
-  devices: readonly string[],
+  devices: readonly InputDevice[],
   current: MicrophoneSetting,
 ): {
   choices: SingleSelectChoice<string>[];
@@ -30,8 +28,7 @@ function microphoneChoices(
   byValue: Map<string, MicrophoneSetting>;
 } {
   const totals = new Map<string, number>();
-  for (const name of devices) totals.set(name, (totals.get(name) ?? 0) + 1);
-  const seen = new Map<string, number>();
+  for (const { name } of devices) totals.set(name, (totals.get(name) ?? 0) + 1);
   const byValue = new Map<string, MicrophoneSetting>();
   byValue.set("system-default", { type: "system-default" });
   const choices: SingleSelectChoice<string>[] = [
@@ -42,9 +39,7 @@ function microphoneChoices(
     },
   ];
   let currentValue = "system-default";
-  for (const [index, name] of devices.entries()) {
-    const occurrence = seen.get(name) ?? 0;
-    seen.set(name, occurrence + 1);
+  for (const [index, { name, occurrence }] of devices.entries()) {
     const microphone: MicrophoneSetting = { type: "device", name, occurrence };
     const value = `device-${index}`;
     const label = (totals.get(name) ?? 0) > 1 ? `${name} · device ${occurrence + 1}` : name;
@@ -55,23 +50,24 @@ function microphoneChoices(
   return { choices, currentValue, byValue };
 }
 
-export function microphonePermissionSummary(result: MicrophonePermission): string {
-  if (result.status === "granted") return "Microphone: ✓ Access granted";
-  if (result.status === "denied") return "Microphone: ✗ Access denied";
-  if (result.status === "not-determined") {
+/** Nothing where the platform has no permission to report (Linux). */
+export function microphonePermissionSummary(permission: Permission): string | undefined {
+  if (permission === "granted") return "Microphone: ✓ Access granted";
+  if (permission === "denied") return "Microphone: ✗ Access denied";
+  if (permission === "not-determined") {
     return "Microphone: ⚠ Not yet requested — first recording will prompt for access";
   }
-  return `Microphone: ⚠ ${result.message}`;
+  return undefined;
 }
 
 export async function chooseMicrophone(
   ctx: ExtensionContext,
   current: MicrophoneSetting,
-  permission: MicrophonePermission,
+  permission: Permission,
 ): Promise<MicrophoneSetting | undefined> {
-  let devices: string[] = [];
+  let devices: InputDevice[] = [];
   try {
-    devices = getAvailableMicrophones();
+    devices = await getAvailableMicrophones();
   } catch (error) {
     ctx.ui.notify(
       `Could not list microphones: ${error instanceof Error ? error.message : String(error)}`,
