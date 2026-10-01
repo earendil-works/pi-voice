@@ -6,7 +6,7 @@ import {
   type CatalogModelPostActivation,
 } from "./model-picker.js";
 import { createModelActivation } from "./model-activation.js";
-import { testMicrophonePermission } from "./audio.js";
+import { microphonePermission } from "./audio.js";
 import { chooseMicrophone, microphonesEqual } from "./microphone-picker.js";
 import {
   chooseRecommendedModel,
@@ -174,7 +174,7 @@ async function finishOnboarding(
       continue;
     }
     if (result?.action === "microphone") {
-      const permission = await testMicrophonePermission();
+      const permission = microphonePermission();
       const microphone = await chooseMicrophone(ctx, configured.microphone, permission);
       if (!microphone || microphonesEqual(microphone, configured.microphone)) continue;
       const updated = { ...configured, microphone };
