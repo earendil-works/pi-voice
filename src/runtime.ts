@@ -1,7 +1,8 @@
-import type {
-  ExtensionAPI,
-  ExtensionCommandContext,
-  ExtensionContext,
+import {
+  rawKeyHint,
+  type ExtensionAPI,
+  type ExtensionCommandContext,
+  type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { getKeybindings } from "@earendil-works/pi-tui";
 import { existsSync } from "node:fs";
@@ -202,12 +203,16 @@ export function createPiVoiceRuntime(
     return settings;
   }
 
-  function listenForCancel(ctx: ExtensionContext): void {
+  function listenForKeys(ctx: ExtensionContext): void {
     stopListening?.();
     if (!ctx.hasUI) return;
     // No pane here to receive an injected manager; pi's global is the same one.
     const keys = new VoiceKeys(getKeybindings());
     stopListening = ctx.ui.onTerminalInput((data) => {
+      if (recording && keys.matches(data, "voice.dictation.stop")) {
+        void runExclusive(ctx, () => stopAndTranscribe(ctx));
+        return { consume: true };
+      }
       if (!keys.matches(data, "voice.dictation.cancel")) return;
       if (recording) {
         void runExclusive(ctx, () => cancelRecording(ctx));
@@ -222,7 +227,7 @@ export function createPiVoiceRuntime(
     });
   }
 
-  function clearCancelListener(): void {
+  function clearKeyListener(): void {
     stopListening?.();
     stopListening = undefined;
   }
@@ -261,7 +266,7 @@ export function createPiVoiceRuntime(
     active.unwatch();
     await active.dictation.dispose();
     if (dictation === active.dictation) dictation = undefined;
-    clearCancelListener();
+    clearKeyListener();
     if (!shuttingDown) ctx.ui.notify("Recording discarded", "info");
   }
 
@@ -303,7 +308,7 @@ export function createPiVoiceRuntime(
       active.unwatch();
       await active.dictation.dispose();
       if (dictation === active.dictation) dictation = undefined;
-      clearCancelListener();
+      clearKeyListener();
       if (keepCompletionVisible) holdCompletionWidget(ctx, clearTranscribeWidget);
       else clearTranscribeWidget(ctx);
     }
@@ -347,21 +352,20 @@ export function createPiVoiceRuntime(
         await reportDictationError(ctx, controller);
         return;
       }
-      // Key text via the same formatter as the Try It pane so the meter
-      // reads exactly like the hint the user learned during setup.
-      const cancelKeys = new VoiceKeys(getKeybindings()).keyText("voice.dictation.cancel");
-      meter.start(ctx, {
-        action: `${displayShortcut(registeredShortcut)} to transcribe`,
-        discard: `${cancelKeys} to discard`,
-      });
+      const keys = new VoiceKeys(getKeybindings());
+      const stopKeys = [...keys.keys("voice.dictation.stop"), registeredShortcut].join("/");
+      meter.start(
+        ctx,
+        `${rawKeyHint(stopKeys, "to transcribe")}  ${keys.hint("voice.dictation.cancel", "to discard")}`,
+      );
       meter.setModelState(controller.modelState);
       recording = { dictation: controller, meter, unwatch: watchEventLoop() };
-      listenForCancel(ctx);
+      listenForKeys(ctx);
     } catch (error) {
       recording?.unwatch();
       recording = undefined;
       meter.stop();
-      clearCancelListener();
+      clearKeyListener();
       ctx.ui.notify(`Recording failed to start: ${error instanceof Error ? error.message : String(error)}`, "error");
     } finally {
       if (recording?.dictation !== controller) {
@@ -485,7 +489,7 @@ export function createPiVoiceRuntime(
     const disposal = dictation?.dispose();
     recording?.meter.stop();
     recording?.unwatch();
-    clearCancelListener();
+    clearKeyListener();
     await Promise.all([
       disposal,
       operation?.catch(() => undefined),

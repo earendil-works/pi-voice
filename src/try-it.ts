@@ -171,7 +171,7 @@ export class TryItPane implements Component {
 
     let hints: string;
     if (state.phase === "listening") {
-      hints = `${rawKeyHint(shortcut, "to transcribe")}  ${this.keys.hint("tui.select.cancel", "to discard")}`;
+      hints = `${rawKeyHint(this.settings.shortcut, "to transcribe")}  ${this.keys.hint("tui.select.cancel", "to discard")}`;
     } else if (
       state.phase === "transcribing" ||
       state.phase === "starting" ||
@@ -179,9 +179,9 @@ export class TryItPane implements Component {
     ) {
       hints = this.keys.hint("tui.select.cancel", "cancel");
     } else if (state.phase === "result") {
-      hints = `${this.keys.hint("tui.select.confirm", "looks good")}  ${this.keys.hint("tui.select.cancel", "done")}  ${rawKeyHint(shortcut, "try again")}`;
+      hints = `${this.keys.hint("tui.select.confirm", "looks good")}  ${this.keys.hint("tui.select.cancel", "done")}  ${rawKeyHint(this.settings.shortcut, "try again")}`;
     } else {
-      hints = `${rawKeyHint(shortcut, state.phase === "error" ? "try again" : "record")}  ${this.keys.hint("tui.select.cancel", "skip")}`;
+      hints = `${rawKeyHint(this.settings.shortcut, state.phase === "error" ? "try again" : "record")}  ${this.keys.hint("tui.select.cancel", "skip")}`;
     }
 
     const setting = (label: string, value: string, key: string, compact: boolean) => {

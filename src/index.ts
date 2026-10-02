@@ -1,4 +1,8 @@
-import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionCommandContext,
+  ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import { existsSync } from "node:fs";
 import { registerFileTranscriptionTool } from "./file-transcription.js";
 import {
@@ -65,32 +69,39 @@ export default function piVoice(pi: ExtensionAPI): void {
     getService: async () => (await loadRuntime()).service,
   });
 
+  async function toggleCapture(ctx: ExtensionContext): Promise<void> {
+    markKeyPress();
+    const release = watchEventLoop();
+    // The first press pays deferred module loading before the runtime can
+    // show anything; paint feedback synchronously. Later presses reach the
+    // memoized runtime in a microtask and it paints its own status.
+    if (!runtimePromise && ctx.hasUI) {
+      ctx.ui.setWidget(STATUS_WIDGET_KEY, [
+        ctx.ui.theme.fg("muted", "Starting microphone…"),
+      ]);
+    }
+    try {
+      await (await loadRuntime()).toggleCapture(ctx);
+    } catch (error) {
+      if (ctx.hasUI) ctx.ui.setWidget(STATUS_WIDGET_KEY, undefined);
+      throw error;
+    } finally {
+      release();
+    }
+  }
+
   pi.registerShortcut(
     registeredShortcut as Parameters<ExtensionAPI["registerShortcut"]>[0],
     {
       description: "Toggle microphone transcription",
-      handler: async (ctx) => {
-        markKeyPress();
-        const release = watchEventLoop();
-        // The first press pays deferred module loading before the runtime can
-        // show anything; paint feedback synchronously. Later presses reach the
-        // memoized runtime in a microtask and it paints its own status.
-        if (!runtimePromise && ctx.hasUI) {
-          ctx.ui.setWidget(STATUS_WIDGET_KEY, [
-            ctx.ui.theme.fg("muted", "Starting microphone…"),
-          ]);
-        }
-        try {
-          await (await loadRuntime()).toggleCapture(ctx);
-        } catch (error) {
-          if (ctx.hasUI) ctx.ui.setWidget(STATUS_WIDGET_KEY, undefined);
-          throw error;
-        } finally {
-          release();
-        }
-      },
+      handler: toggleCapture,
     },
   );
+
+  pi.registerCommand("voice", {
+    description: "Start or stop microphone transcription",
+    handler: (_args, ctx) => toggleCapture(ctx),
+  });
 
   const openSettings = async (
     _args: string,
