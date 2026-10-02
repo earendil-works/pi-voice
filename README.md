@@ -27,8 +27,6 @@ The extension registers:
 - a `transcribe_file` tool that the agent can use to transcribe local audio or video files;
 - `/voice-settings` for preferred languages, model, transcription language, microphone, and shortcut settings.
 
-While recording, press `Space` (or the shortcut) to transcribe, or `Escape` to discard. Both keys can be rebound in Pi's `keybindings.json` as `voice.dictation.stop` and `voice.dictation.cancel`.
-
 `/transcribe` remains available as a compatibility alias for `/voice-settings`.
 
 ## Upgrading from pi-transcribe
@@ -86,4 +84,3 @@ If you want to be able to re-run onboarding you can enable the debug env var whe
 ```bash
 PI_VOICE_DEBUG=1 pi -e /absolute/path/to/pi-voice
 ```
-
