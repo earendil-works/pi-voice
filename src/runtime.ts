@@ -1,7 +1,8 @@
-import type {
-  ExtensionAPI,
-  ExtensionCommandContext,
-  ExtensionContext,
+import {
+  rawKeyHint,
+  type ExtensionAPI,
+  type ExtensionCommandContext,
+  type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { getKeybindings } from "@earendil-works/pi-tui";
 import { existsSync } from "node:fs";
@@ -28,8 +29,6 @@ export type PiVoiceRuntime = {
   readonly service: TranscriptionService;
   requireConfiguredSettingsForTool(): Promise<TranscribeSettings>;
   toggleCapture(ctx: ExtensionContext): Promise<void>;
-  /** Like toggleCapture, but never stops a recording already in progress. */
-  startCapture(ctx: ExtensionContext): Promise<void>;
   showSettings(ctx: ExtensionCommandContext): Promise<void>;
   replayOnboarding(ctx: ExtensionCommandContext): Promise<void>;
   shutdown(ctx: ExtensionContext): Promise<void>;
@@ -210,11 +209,9 @@ export function createPiVoiceRuntime(
     // No pane here to receive an injected manager; pi's global is the same one.
     const keys = new VoiceKeys(getKeybindings());
     stopListening = ctx.ui.onTerminalInput((data) => {
-      if (keys.matches(data, "voice.dictation.stop")) {
-        if (recording && !operation) void runExclusive(ctx, () => stopAndTranscribe(ctx));
-        // Swallow key repeat until transcription finishes and the listener goes.
-        if (recording || dictation) return { consume: true };
-        return;
+      if (recording && keys.matches(data, "voice.dictation.stop")) {
+        void runExclusive(ctx, () => stopAndTranscribe(ctx));
+        return { consume: true };
       }
       if (!keys.matches(data, "voice.dictation.cancel")) return;
       if (recording) {
@@ -230,7 +227,7 @@ export function createPiVoiceRuntime(
     });
   }
 
-  function clearCancelListener(): void {
+  function clearKeyListener(): void {
     stopListening?.();
     stopListening = undefined;
   }
@@ -269,7 +266,7 @@ export function createPiVoiceRuntime(
     active.unwatch();
     await active.dictation.dispose();
     if (dictation === active.dictation) dictation = undefined;
-    clearCancelListener();
+    clearKeyListener();
     if (!shuttingDown) ctx.ui.notify("Recording discarded", "info");
   }
 
@@ -311,7 +308,7 @@ export function createPiVoiceRuntime(
       active.unwatch();
       await active.dictation.dispose();
       if (dictation === active.dictation) dictation = undefined;
-      clearCancelListener();
+      clearKeyListener();
       if (keepCompletionVisible) holdCompletionWidget(ctx, clearTranscribeWidget);
       else clearTranscribeWidget(ctx);
     }
@@ -355,14 +352,12 @@ export function createPiVoiceRuntime(
         await reportDictationError(ctx, controller);
         return;
       }
-      // Key text via the same formatter as the Try It pane so the meter
-      // reads exactly like the hint the user learned during setup.
       const keys = new VoiceKeys(getKeybindings());
-      const stopKeys = keys.keyText("voice.dictation.stop");
-      meter.start(ctx, {
-        action: `${stopKeys ? `${stopKeys}/` : ""}${displayShortcut(registeredShortcut)} to transcribe`,
-        discard: `${keys.keyText("voice.dictation.cancel")} to discard`,
-      });
+      const stopKeys = [...keys.keys("voice.dictation.stop"), registeredShortcut].join("/");
+      meter.start(
+        ctx,
+        `${rawKeyHint(stopKeys, "to transcribe")}  ${keys.hint("voice.dictation.cancel", "to discard")}`,
+      );
       meter.setModelState(controller.modelState);
       recording = { dictation: controller, meter, unwatch: watchEventLoop() };
       listenForKeys(ctx);
@@ -370,7 +365,7 @@ export function createPiVoiceRuntime(
       recording?.unwatch();
       recording = undefined;
       meter.stop();
-      clearCancelListener();
+      clearKeyListener();
       ctx.ui.notify(`Recording failed to start: ${error instanceof Error ? error.message : String(error)}`, "error");
     } finally {
       if (recording?.dictation !== controller) {
@@ -431,11 +426,6 @@ export function createPiVoiceRuntime(
 
   async function toggleCapture(ctx: ExtensionContext): Promise<void> {
     await runExclusive(ctx, () => toggleCaptureTask(ctx));
-  }
-
-  async function startCapture(ctx: ExtensionContext): Promise<void> {
-    if (recording) return;
-    await toggleCapture(ctx);
   }
 
   async function showSettings(ctx: ExtensionCommandContext): Promise<void> {
@@ -499,7 +489,7 @@ export function createPiVoiceRuntime(
     const disposal = dictation?.dispose();
     recording?.meter.stop();
     recording?.unwatch();
-    clearCancelListener();
+    clearKeyListener();
     await Promise.all([
       disposal,
       operation?.catch(() => undefined),
@@ -517,7 +507,6 @@ export function createPiVoiceRuntime(
     service: transcriptionService,
     requireConfiguredSettingsForTool,
     toggleCapture,
-    startCapture,
     showSettings,
     replayOnboarding,
     shutdown,

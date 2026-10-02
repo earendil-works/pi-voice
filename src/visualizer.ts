@@ -188,8 +188,8 @@ export function renderMeterLine(
     bands: readonly number[];
     elapsedMs: number;
     modelState: MeterModelState;
-    actionHint?: string;
-    discardHint?: string;
+    /** Pre-styled key hints, as built by pi's `rawKeyHint`. */
+    hints?: string;
   },
 ): string {
   const parts = [
@@ -198,8 +198,7 @@ export function renderMeterLine(
   ];
   if (options.modelState === "loading") parts.push(theme.fg("dim", "loading model"));
   if (options.modelState === "failed") parts.push(theme.fg("warning", "model load failed"));
-  if (options.actionHint) parts.push(theme.fg("muted", options.actionHint));
-  if (options.discardHint) parts.push(theme.fg("dim", options.discardHint));
+  if (options.hints) parts.push(options.hints);
   return parts.join("  ");
 }
 
@@ -211,12 +210,9 @@ export class RecordingMeter {
   private lastLine: string | undefined;
   private ctx: ExtensionContext | undefined;
   private modelState: MeterModelState = "loading";
-  private hints: { action: string; discard: string } | undefined;
+  private hints: string | undefined;
 
-  start(
-    ctx: ExtensionContext,
-    hints: { action: string; discard: string },
-  ): void {
+  start(ctx: ExtensionContext, hints: string): void {
     if (!ctx.hasUI) return;
     this.ctx = ctx;
     this.hints = hints;
@@ -259,8 +255,7 @@ export class RecordingMeter {
       bands: this.analyzer.bands,
       elapsedMs: Date.now() - this.startedAt,
       modelState: this.modelState,
-      actionHint: this.hints?.action,
-      discardHint: this.hints?.discard,
+      hints: this.hints,
     });
     if (line === this.lastLine) return;
     this.lastLine = line;

@@ -69,10 +69,7 @@ export default function piVoice(pi: ExtensionAPI): void {
     getService: async () => (await loadRuntime()).service,
   });
 
-  async function capture(
-    ctx: ExtensionContext,
-    action: "toggleCapture" | "startCapture",
-  ): Promise<void> {
+  async function toggleCapture(ctx: ExtensionContext): Promise<void> {
     markKeyPress();
     const release = watchEventLoop();
     // The first press pays deferred module loading before the runtime can
@@ -84,7 +81,7 @@ export default function piVoice(pi: ExtensionAPI): void {
       ]);
     }
     try {
-      await (await loadRuntime())[action](ctx);
+      await (await loadRuntime()).toggleCapture(ctx);
     } catch (error) {
       if (ctx.hasUI) ctx.ui.setWidget(STATUS_WIDGET_KEY, undefined);
       throw error;
@@ -97,13 +94,13 @@ export default function piVoice(pi: ExtensionAPI): void {
     registeredShortcut as Parameters<ExtensionAPI["registerShortcut"]>[0],
     {
       description: "Toggle microphone transcription",
-      handler: (ctx) => capture(ctx, "toggleCapture"),
+      handler: toggleCapture,
     },
   );
 
   pi.registerCommand("voice", {
-    description: "Start recording; press Space to transcribe",
-    handler: (_args, ctx) => capture(ctx, "startCapture"),
+    description: "Start or stop microphone transcription",
+    handler: (_args, ctx) => toggleCapture(ctx),
   });
 
   const openSettings = async (
