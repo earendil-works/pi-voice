@@ -441,7 +441,7 @@ export function createPiVoiceRuntime(
     await dismissCompletionWidget(ctx);
     if (recording) {
       ctx.ui.notify(
-        `Stop recording with ${displayShortcut(registeredShortcut)} before opening settings`,
+        "Stop recording before opening settings",
         "warning",
       );
       return;
@@ -471,7 +471,7 @@ export function createPiVoiceRuntime(
     await dismissCompletionWidget(ctx);
     if (recording) {
       ctx.ui.notify(
-        `Stop recording with ${displayShortcut(registeredShortcut)} before replaying onboarding`,
+        "Stop recording before replaying onboarding",
         "warning",
       );
       return;
