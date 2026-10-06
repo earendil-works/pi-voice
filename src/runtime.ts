@@ -5,6 +5,8 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { getKeybindings } from "@earendil-works/pi-tui";
 import { existsSync } from "node:fs";
+import { CAPTURE_SAMPLE_RATE } from "./audio-constants.js";
+import { isMacOSPermissionDenied } from "./audio-errors.js";
 import { logStep, watchEventLoop } from "./log.js";
 import { DictationController } from "./dictation-controller.js";
 import { VoiceKeys } from "./keybindings.js";
@@ -33,16 +35,11 @@ export type PiVoiceRuntime = {
   shutdown(ctx: ExtensionContext): Promise<void>;
 };
 
-function isMicrophoneUnavailableError(error: unknown): boolean {
-  return error instanceof Error && error.name === "MicrophoneUnavailableError";
-}
-
 function captureErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  const permissionHelp =
-    process.platform === "darwin" && !isMicrophoneUnavailableError(error)
-      ? " Check System Settings → Privacy & Security → Microphone for your terminal app."
-      : "";
+  const permissionHelp = isMacOSPermissionDenied(error)
+    ? " Check System Settings → Privacy & Security → Microphone for your terminal app."
+    : "";
   return `Microphone capture failed: ${message}${permissionHelp}`;
 }
 
@@ -79,7 +76,7 @@ export function createPiVoiceRuntime(
 
   async function reportCaptureError(ctx: ExtensionContext, error: unknown): Promise<void> {
     ctx.ui.notify(captureErrorMessage(error), "error");
-    if (!isMicrophoneUnavailableError(error)) {
+    if (isMacOSPermissionDenied(error)) {
       const { offerMacOSPermissionHelp } = await import("./settings-menu.js");
       await offerMacOSPermissionHelp(pi, ctx);
     }
@@ -296,8 +293,18 @@ export function createPiVoiceRuntime(
           formatTranscriptionSummary(result.speechSeconds, result.transcribeSeconds),
         );
         keepCompletionVisible = true;
+        if (result.interruption) {
+          ctx.ui.notify(
+            `The microphone stopped after ${result.speechSeconds.toFixed(1)}s (${result.interruption.message}); transcribed the audio up to then.`,
+            "warning",
+          );
+        }
+        if (result.droppedFrames) {
+          ctx.ui.notify(`${(result.droppedFrames / CAPTURE_SAMPLE_RATE).toFixed(2)}s of audio was lost during recording`, "warning");
+        }
       } else {
-        ctx.ui.notify(`No speech detected in ${result.speechSeconds.toFixed(1)}s of audio`, "warning");
+        const stopped = result.interruption ? ` before the microphone stopped (${result.interruption.message})` : "";
+        ctx.ui.notify(`No speech detected in ${result.speechSeconds.toFixed(1)}s of audio${stopped}`, "warning");
       }
     } finally {
       active.unwatch();
@@ -314,10 +321,9 @@ export function createPiVoiceRuntime(
     configured: TranscribeSettings,
   ): Promise<void> {
     logStep("loading audio module");
-    const { createMicrophoneCapture, testMicrophonePermission } = await loadAudio();
+    const { microphonePermission, openMicrophone } = await loadAudio();
     if (process.platform === "darwin") {
-      const micStatus = await testMicrophonePermission();
-      if (micStatus.status === "denied") {
+      if (microphonePermission() === "denied") {
         const openSettings = await ctx.ui.confirm(
           "Microphone access",
           "Microphone access is denied in System Settings. Open Privacy & Security → Microphone settings?",
@@ -333,13 +339,16 @@ export function createPiVoiceRuntime(
     if (shuttingDown) return;
     const meter = new RecordingMeter();
     const controller = new DictationController(transcriptionService, {
-      createCapture: createMicrophoneCapture,
-      onFrame: (frame) => meter.push(frame),
-      onChange: () => meter.setModelState(controller.modelState),
+      openCapture: openMicrophone,
+      onAudio: (chunk) => meter.push(chunk),
+      onChange: updateMeter,
     });
+    function updateMeter(): void {
+      meter.update({ modelState: controller.modelState, microphoneStopped: controller.interruption !== undefined });
+    }
     dictation = controller;
     try {
-      // Paint startup feedback before opening the native device blocks the loop.
+      // Paint startup feedback before the synchronous device lookup.
       await new Promise<void>((resolve) => setImmediate(resolve));
       if (shuttingDown) return;
       await controller.start(configured);
@@ -354,7 +363,7 @@ export function createPiVoiceRuntime(
         action: `${displayShortcut(registeredShortcut)} to transcribe`,
         discard: `${cancelKeys} to discard`,
       });
-      meter.setModelState(controller.modelState);
+      updateMeter();
       recording = { dictation: controller, meter, unwatch: watchEventLoop() };
       listenForCancel(ctx);
     } catch (error) {

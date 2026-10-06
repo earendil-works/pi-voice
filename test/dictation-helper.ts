@@ -1,24 +1,39 @@
 import { Deferred } from "../src/deferred.js";
-import type { DictationCapture } from "../src/dictation-controller.js";
+import type { Capture, CapturedAudio, CaptureSinks, OpenCapture } from "../src/dictation-controller.js";
 import type { DictationReservation } from "../src/transcription-service.js";
 
-export class FakeCapture implements DictationCapture {
-  onFrame?: (frame: Int16Array) => void;
-  starts = 0;
+/** One recording on a FakeMicrophone. */
+export class FakeCapture implements Capture {
   stops = 0;
-  startError: Error | undefined;
   stopError: Error | undefined;
-  stopGate: Deferred<{ pcm: Float32Array }> | undefined;
+  stopGate: Deferred<CapturedAudio> | undefined;
   pcm = new Float32Array(16000);
-  start(): void {
-    this.starts++;
-    if (this.startError) throw this.startError;
-  }
-  stop(): Promise<{ pcm: Float32Array }> {
+  constructor(private readonly sinks: CaptureSinks) {}
+  feed(chunk: Float32Array): void { this.sinks.onAudio(chunk); }
+  fail(error: Error): void { this.sinks.onFailure(error); }
+  stop(): Promise<CapturedAudio> {
     this.stops++;
     if (this.stopError) return Promise.reject(this.stopError);
     return this.stopGate?.promise ?? Promise.resolve({ pcm: this.pcm });
   }
+}
+
+export class FakeMicrophone {
+  readonly captures: FakeCapture[] = [];
+  opens = 0;
+  openError: Error | undefined;
+  openGate: Deferred<void> | undefined;
+  /** Delivered while opening, before open resolves, as a device may. */
+  audioDuringOpen: Float32Array[] = [];
+  readonly open: OpenCapture = async (_microphone, sinks) => {
+    this.opens++;
+    await this.openGate?.promise;
+    if (this.openError) throw this.openError;
+    for (const chunk of this.audioDuringOpen) sinks.onAudio(chunk);
+    const capture = new FakeCapture(sinks);
+    this.captures.push(capture);
+    return capture;
+  };
 }
 
 export class FakeReservation implements DictationReservation {
