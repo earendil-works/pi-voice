@@ -23,10 +23,11 @@ pi install ssh://git@github.com/earendil-works/pi-voice
 The extension registers:
 
 - a configurable terminal shortcut (`Ctrl+Alt+Z` by default) to start and stop recording;
+- `/voice`, which does the same as the shortcut. While recording, `Space` also stops and transcribes, and `Escape` discards;
 - a `transcribe_file` tool that the agent can use to transcribe local audio or video files;
 - `/voice-settings` for preferred languages, model, transcription language, microphone, and shortcut settings.
 
-`/transcribe` remains available as a compatibility alias for `/voice-settings`. The `/voice` command is reserved for a future voice mode.
+`/transcribe` remains available as a compatibility alias for `/voice-settings`.
 
 ## Upgrading from pi-transcribe
 
@@ -83,4 +84,3 @@ If you want to be able to re-run onboarding you can enable the debug env var whe
 ```bash
 PI_VOICE_DEBUG=1 pi -e /absolute/path/to/pi-voice
 ```
-
