@@ -62,7 +62,7 @@ function radix2Fft(re: Float64Array, im: Float64Array): void {
   }
 }
 
-function bandEnergies(frame: Int16Array, re: Float64Array, im: Float64Array): number[] {
+function bandEnergies(samples: Float32Array, re: Float64Array, im: Float64Array): number[] {
   const n = re.length;
   if (n < 2) return BAND_EDGES_HZ.slice(0, -1).map(() => 0);
 
@@ -70,7 +70,7 @@ function bandEnergies(frame: Int16Array, re: Float64Array, im: Float64Array): nu
   im.fill(0);
   for (let index = 0; index < n; index += 1) {
     const window = 0.5 - 0.5 * Math.cos((2 * Math.PI * index) / (n - 1));
-    re[index] = ((frame[index] ?? 0) / 32_768) * window;
+    re[index] = (samples[index] ?? 0) * window;
   }
   radix2Fft(re, im);
 
@@ -152,7 +152,7 @@ export function showReadyStatus(
 
 export type MeterModelState = "loading" | "ready" | "failed";
 
-/** Peak-hold band levels computed from capture frames. */
+/** Peak-hold band levels computed from capture chunks. */
 export class SpectrumAnalyzer {
   readonly bands: number[] = Array.from({ length: BAND_EDGES_HZ.length - 1 }, () => 0);
   private re: Float64Array | undefined;
@@ -164,13 +164,13 @@ export class SpectrumAnalyzer {
     this.im = undefined;
   }
 
-  push(frame: Int16Array): void {
-    const n = floorPowerOfTwo(frame.length);
+  push(samples: Float32Array): void {
+    const n = floorPowerOfTwo(samples.length);
     if (!this.re || !this.im || this.re.length !== n) {
       this.re = new Float64Array(n);
       this.im = new Float64Array(n);
     }
-    const energies = bandEnergies(frame, this.re, this.im);
+    const energies = bandEnergies(samples, this.re, this.im);
     for (let index = 0; index < this.bands.length; index += 1) {
       this.bands[index] = Math.max(energies[index] ?? 0, (this.bands[index] ?? 0) * DECAY);
     }
@@ -188,6 +188,8 @@ export function renderMeterLine(
     bands: readonly number[];
     elapsedMs: number;
     modelState: MeterModelState;
+    /** The microphone failed; what it captured is kept. */
+    microphoneStopped?: boolean;
     /** Pre-styled key hints, as built by pi's `rawKeyHint`. */
     hints?: string;
   },
@@ -198,6 +200,7 @@ export function renderMeterLine(
   ];
   if (options.modelState === "loading") parts.push(theme.fg("dim", "loading model"));
   if (options.modelState === "failed") parts.push(theme.fg("warning", "model load failed"));
+  if (options.microphoneStopped) parts.push(theme.fg("error", "microphone stopped"));
   if (options.hints) parts.push(options.hints);
   return parts.join("  ");
 }
@@ -210,6 +213,7 @@ export class RecordingMeter {
   private lastLine: string | undefined;
   private ctx: ExtensionContext | undefined;
   private modelState: MeterModelState = "loading";
+  private microphoneStopped = false;
   private hints: string | undefined;
 
   start(ctx: ExtensionContext, hints: string): void {
@@ -221,17 +225,19 @@ export class RecordingMeter {
     this.nextPaintAt = 0;
     this.lastLine = undefined;
     this.modelState = "loading";
+    this.microphoneStopped = false;
     this.paint();
   }
 
-  setModelState(state: MeterModelState): void {
-    this.modelState = state;
+  update(state: { modelState: MeterModelState; microphoneStopped: boolean }): void {
+    this.modelState = state.modelState;
+    this.microphoneStopped = state.microphoneStopped;
     this.paint();
   }
 
-  push(frame: Int16Array): void {
+  push(samples: Float32Array): void {
     if (!this.ctx) return;
-    this.analyzer.push(frame);
+    this.analyzer.push(samples);
     const now = Date.now();
     if (now < this.nextPaintAt) return;
     this.nextPaintAt = now + METER_UPDATE_MS;
@@ -255,6 +261,7 @@ export class RecordingMeter {
       bands: this.analyzer.bands,
       elapsedMs: Date.now() - this.startedAt,
       modelState: this.modelState,
+      microphoneStopped: this.microphoneStopped,
       hints: this.hints,
     });
     if (line === this.lastLine) return;

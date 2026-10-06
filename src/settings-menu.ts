@@ -3,7 +3,7 @@ import type {
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth } from "@earendil-works/pi-tui";
-import { testMicrophonePermission } from "./audio.js";
+import { microphonePermission, type Permission } from "./audio.js";
 import { displayLanguage, getCatalogModel } from "./catalog.js";
 import { chineseOutputSummary, isChineseLanguage } from "./chinese.js";
 import {
@@ -13,10 +13,8 @@ import {
 } from "./model-picker.js";
 import {
   chooseMicrophone,
-  microphonePermissionSummary,
   microphonesEqual,
   microphoneSummary,
-  type MicrophonePermission,
 } from "./microphone-picker.js";
 import { runModelSelection } from "./onboarding.js";
 import {
@@ -86,7 +84,7 @@ async function saveUpdatedSettings(
 
 function settingsHomeChoices(
   configured: TranscribeSettings,
-  permission: MicrophonePermission,
+  permission: Permission,
 ): SettingsHomeChoice[] {
   const model = getCatalogModel(configured.model.id)!;
   const choices: SettingsHomeChoice[] = [
@@ -129,7 +127,7 @@ function settingsHomeChoices(
       // A permission problem replaces the device summary so it is visible
       // from the home screen; selecting the row then goes straight to the
       // System Settings fix.
-      ...(permission.status === "denied" && process.platform === "darwin"
+      ...(permission === "denied" && process.platform === "darwin"
         ? {
             summary: "✗ Access denied",
             alert: true,
@@ -154,7 +152,7 @@ function settingsHomeChoices(
 async function showSettingsHome(
   ctx: ExtensionContext,
   configured: TranscribeSettings,
-  permission: MicrophonePermission,
+  permission: Permission,
 ): Promise<SettingsAction | undefined> {
   return ctx.ui.custom<SettingsAction | undefined>((tui, theme, keybindings, done) => {
     const choices = settingsHomeChoices(configured, permission);
@@ -297,7 +295,7 @@ export async function showSettingsMenu(
   let reload = configured.shortcut !== registeredShortcut;
   // Checked on open and refreshed whenever the Microphone row is activated,
   // where access problems are surfaced and fixed.
-  let permission = await testMicrophonePermission();
+  let permission = microphonePermission();
   while (true) {
     const action = await showSettingsHome(ctx, configured, permission);
     if (!action) return reload;
@@ -372,8 +370,8 @@ export async function showSettingsMenu(
     }
 
     if (action === "microphone") {
-      permission = await testMicrophonePermission();
-      if (permission.status === "denied" && process.platform === "darwin") {
+      permission = microphonePermission();
+      if (permission === "denied" && process.platform === "darwin") {
         // Choosing a device is pointless while capture is blocked; go
         // straight to the fix.
         await openMacOSMicrophoneSettings(pi, ctx);

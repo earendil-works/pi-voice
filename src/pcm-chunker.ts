@@ -1,11 +1,10 @@
 import { CAPTURE_SAMPLE_RATE } from "./audio-constants.js";
-import { convertFrames } from "./pcm.js";
 
 const STREAM_CHUNK_SAMPLES = CAPTURE_SAMPLE_RATE / 2;
 
-/** Coalesces recorder frames into fresh Float32 PCM chunks without timers. */
+/** Coalesces recorder chunks into fresh Float32 PCM chunks without timers. */
 export class PcmChunker {
-  private frames: Int16Array[] = [];
+  private pieces: Float32Array[] = [];
   private sampleCount = 0;
 
   constructor(
@@ -17,10 +16,10 @@ export class PcmChunker {
     }
   }
 
-  push(frame: Int16Array): void {
-    if (frame.length === 0) return;
-    this.frames.push(frame);
-    this.sampleCount += frame.length;
+  push(samples: Float32Array): void {
+    if (samples.length === 0) return;
+    this.pieces.push(samples);
+    this.sampleCount += samples.length;
     if (this.sampleCount >= this.targetSamples) this.emit();
   }
 
@@ -29,13 +28,18 @@ export class PcmChunker {
   }
 
   discard(): void {
-    this.frames = [];
+    this.pieces = [];
     this.sampleCount = 0;
   }
 
   private emit(): void {
-    const pcm = convertFrames(this.frames);
-    this.frames = [];
+    const pcm = new Float32Array(this.sampleCount);
+    let offset = 0;
+    for (const piece of this.pieces) {
+      pcm.set(piece, offset);
+      offset += piece.length;
+    }
+    this.pieces = [];
     this.sampleCount = 0;
     this.onChunk(pcm);
   }
