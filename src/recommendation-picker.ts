@@ -11,6 +11,7 @@ import {
 import {
   displayLanguage,
   formatBinarySize,
+  modelFile,
 } from "./catalog.js";
 import type { CatalogModelActivation } from "./model-activation.js";
 import { undetectablePreferences } from "./language-detection-policy.js";
@@ -250,7 +251,7 @@ export class RecommendedModelPicker extends Container implements Focusable {
     const prefix = active ? this.theme.fg("accent", "→ ") : "  ";
     const nameText = padToWidth(recommendation.model.name, NAME_WIDTH);
     const name = active ? this.theme.fg("accent", nameText) : nameText;
-    const size = this.theme.fg("dim", formatBinarySize(recommendation.model.size));
+    const size = this.theme.fg("dim", formatBinarySize(modelFile(recommendation.model).size));
     this.body.addChild(new Text(`${prefix}${name}  ${size}`, LIST_PADDING, 0));
     this.body.addChild(this.modelDetails(recommendation));
   }
@@ -415,7 +416,7 @@ export class RecommendedModelPicker extends Container implements Focusable {
     const [start, end] = selectedWindow(rows, this.selectedIndex, room);
     const choices = rows.slice(start, end).map((row, index) => {
       const label = row.type === "model"
-        ? `${row.recommendation.model.name} · ${formatBinarySize(row.recommendation.model.size)}`
+        ? `${row.recommendation.model.name} · ${formatBinarySize(modelFile(row.recommendation.model).size)}`
         : this.rowLabel(row).title;
       return line(index + start === this.selectedIndex ? this.theme.fg("accent", `→ ${label}`) : `  ${label}`);
     });

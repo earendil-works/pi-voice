@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { CatalogModel } from "../src/catalog.js";
+import { modelFile, type CatalogModel } from "../src/catalog.js";
 import { downloadCatalogModel, findIncompleteDownload } from "../src/models.js";
 
 const CHUNK = 16384;
@@ -26,9 +26,9 @@ function testModel(data: Buffer): CatalogModel {
     name: "Test Model",
     repository: "test-org/test-model-gguf",
     revision: "0123456789abcdef",
-    filename: "model.gguf",
-    size: data.length,
-    sha256: createHash("sha256").update(data).digest("hex"),
+    previousRevisions: [],
+    quant: "Q8_0",
+    files: { Q8_0: { filename: "model.gguf", size: data.length, sha256: createHash("sha256").update(data).digest("hex") } },
   } as unknown as CatalogModel;
 }
 
@@ -163,7 +163,7 @@ test("an interrupted download keeps a resumable partial and resumes with a range
     assert.ok(second.requests.includes(`bytes=${partial.bytes}-`), `requests: ${second.requests}`);
     assert.equal(second.bytesServed(), data.length - partial.bytes);
     const downloaded = await readFile(path);
-    assert.equal(createHash("sha256").update(downloaded).digest("hex"), model.sha256);
+    assert.equal(createHash("sha256").update(downloaded).digest("hex"), modelFile(model).sha256);
     assert.equal(findIncompleteDownload(model), undefined);
   }));
 
@@ -189,7 +189,7 @@ test("a server that ignores ranges restarts the download cleanly", () =>
     const data = testData(256 * 1024);
     const model = testModel(data);
     await mkdir(blobsDirectory(model), { recursive: true });
-    await writeFile(join(blobsDirectory(model), `${model.sha256}.incomplete`), Buffer.alloc(100_000, 7));
+    await writeFile(join(blobsDirectory(model), `${modelFile(model).sha256}.incomplete`), Buffer.alloc(100_000, 7));
 
     const hub = fakeHub({ data, honorRanges: false });
     const path = await downloadCatalogModel(model, { fetch: hub.fetchImpl });
@@ -199,7 +199,7 @@ test("a server that ignores ranges restarts the download cleanly", () =>
     // the clean restart.
     assert.ok(hub.bytesServed() >= data.length && hub.bytesServed() <= data.length + CHUNK);
     const downloaded = await readFile(path);
-    assert.equal(createHash("sha256").update(downloaded).digest("hex"), model.sha256);
+    assert.equal(createHash("sha256").update(downloaded).digest("hex"), modelFile(model).sha256);
   }));
 
 test("a corrupted partial fails verification, is removed, and the retry succeeds", () =>
@@ -208,7 +208,7 @@ test("a corrupted partial fails verification, is removed, and the retry succeeds
     const model = testModel(data);
     await mkdir(blobsDirectory(model), { recursive: true });
     // Plausible size, wrong content: the resumed hash cannot match.
-    await writeFile(join(blobsDirectory(model), `${model.sha256}.incomplete`), Buffer.alloc(100_000, 7));
+    await writeFile(join(blobsDirectory(model), `${modelFile(model).sha256}.incomplete`), Buffer.alloc(100_000, 7));
 
     await assert.rejects(
       downloadCatalogModel(model, { fetch: fakeHub({ data }).fetchImpl }),
@@ -225,7 +225,7 @@ test("a full-size partial is verified and published without touching the network
     const data = testData(128 * 1024);
     const model = testModel(data);
     await mkdir(blobsDirectory(model), { recursive: true });
-    await writeFile(join(blobsDirectory(model), `${model.sha256}.incomplete`), data);
+    await writeFile(join(blobsDirectory(model), `${modelFile(model).sha256}.incomplete`), data);
 
     const hub = fakeHub({ data });
     const path = await downloadCatalogModel(model, { fetch: hub.fetchImpl });
@@ -263,7 +263,7 @@ test("a 206 with the wrong starting offset is rejected without changing the part
     const model = testModel(data);
     await mkdir(blobsDirectory(model), { recursive: true });
     await writeFile(
-      join(blobsDirectory(model), `${model.sha256}.incomplete`),
+      join(blobsDirectory(model), `${modelFile(model).sha256}.incomplete`),
       data.subarray(0, 100_000),
     );
 

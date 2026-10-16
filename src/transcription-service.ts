@@ -662,7 +662,9 @@ export class TranscriptionService {
         this.modelPath = undefined;
       }
       await backend.dispose().catch(() => undefined);
-      throw error;
+      // Keeps Hugging Face modules off the path until a load actually fails.
+      const { explainLoadFailure } = await import("./models.js");
+      throw explainLoadFailure(modelPath, error);
     }
   }
 

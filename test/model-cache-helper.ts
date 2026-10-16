@@ -1,9 +1,9 @@
 import { getRepoFolderName } from "@huggingface/hub";
 import { mkdirSync, mkdtempSync, rmSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { TestContext } from "node:test";
-import type { CatalogModel } from "../src/catalog.js";
+import { modelFile, type CatalogModel } from "../src/catalog.js";
 
 /** Small, isolated cache entries; never touch real models or download files. */
 export function isolatedModelCache(t: TestContext): (model: CatalogModel) => CatalogModel {
@@ -15,18 +15,23 @@ export function isolatedModelCache(t: TestContext): (model: CatalogModel) => Cat
     else process.env.HF_HUB_CACHE = previous;
     rmSync(directory, { recursive: true, force: true });
   });
-  return (original) => {
-    const model = { ...original, size: 1 };
-    const snapshot = join(
-      directory,
-      getRepoFolderName({ name: model.repository, type: "model" }),
-      "snapshots",
-      model.revision,
-    );
-    mkdirSync(snapshot, { recursive: true });
-    writeFileSync(join(snapshot, model.filename), "x");
+  return (model) => {
+    const path = snapshotPath(model);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, "x");
     return model;
   };
+}
+
+/** Where the pinned file of `model` lives in the active test cache. */
+export function snapshotPath(model: CatalogModel, revision = model.revision, filename = modelFile(model).filename): string {
+  return join(
+    process.env.HF_HUB_CACHE!,
+    getRepoFolderName({ name: model.repository, type: "model" }),
+    "snapshots",
+    revision,
+    filename,
+  );
 }
 
 /** A sparse cache entry at the catalog size, visible to production cache probes. */
@@ -35,15 +40,6 @@ export function cacheCatalogModel(
   model: CatalogModel,
 ): CatalogModel {
   cache(model);
-  truncateSync(
-    join(
-      process.env.HF_HUB_CACHE!,
-      getRepoFolderName({ name: model.repository, type: "model" }),
-      "snapshots",
-      model.revision,
-      model.filename,
-    ),
-    model.size,
-  );
+  truncateSync(snapshotPath(model), modelFile(model).size);
   return model;
 }

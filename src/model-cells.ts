@@ -7,6 +7,7 @@ import {
   formatBinarySize,
   modelMatchesLanguage,
   type CatalogModel,
+  modelFile,
 } from "./catalog.js";
 import {
   languageAccuracyGrade,
@@ -166,7 +167,7 @@ export function modelTableRow(
   const current = selectionMarker(theme, options.current);
   const nameText = padToWidth(model.name, layout.nameWidth);
   const name = options.active ? theme.fg("accent", nameText) : nameText;
-  const sizeText = options.downloaded ? ON_DISK_LABEL : formatBinarySize(model.size);
+  const sizeText = options.downloaded ? ON_DISK_LABEL : formatBinarySize(modelFile(model).size);
   const size = layout.sizeWidth === undefined
     ? ""
     : `  ${theme.fg("dim", sizeText.padStart(layout.sizeWidth))}`;
@@ -210,7 +211,7 @@ export function downloadAction(model: CatalogModel, modelCached: boolean): strin
   const pending = pendingDownloads(model, modelCached);
   if (!pending.length) return "choose";
   const partial = pending.map(findIncompleteDownload);
-  const bytes = pending.reduce((sum, item, index) => sum + item.size - (partial[index]?.bytes ?? 0), 0);
+  const bytes = pending.reduce((sum, item, index) => sum + modelFile(item).size - (partial[index]?.bytes ?? 0), 0);
   return partial.some(Boolean)
     ? `resume download (${formatBinarySize(bytes)} left)`
     : `download ${formatBinarySize(bytes)}`;

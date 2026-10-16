@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { canonicalLanguage, languageIdentity, resolveModelLanguage } from "../src/languages.js";
+import { canonicalLanguage, languageIdentity, resolveModelLanguage } from "../src/catalog.js";
 
 test("language identities normalize case, regions, and aliases", () => {
   assert.equal(canonicalLanguage(" TL-ph "), "tl");

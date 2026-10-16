@@ -3,18 +3,30 @@ import { chmod, readFile, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import source from "../catalog/catalog.json" with { type: "json" };
-import benchmark from "../catalog/recommendations.json" with { type: "json" };
-import { CATALOG_MODELS } from "../src/catalog.js";
+import { ALL_MODELS, modelsForEngine } from "@handy-computer/models";
+import { CATALOG_MODELS, getCatalogModel, LANGUAGE_DETECTION_MODEL, modelFile } from "../src/catalog.js";
 import { readSettings, settingsForModel, writeSettings } from "../src/settings.js";
 import { readShortcutForRegistration } from "../src/startup-shortcut.js";
 
-test("generated catalog matches its source and benchmarks contain no stale model IDs", () => {
-  assert.deepEqual(CATALOG_MODELS, source.models);
-  const ids = new Set(CATALOG_MODELS.map((model) => model.id));
-  assert.equal(ids.size, CATALOG_MODELS.length);
-  for (const id of Object.keys(benchmark.models)) {
-    assert.ok(ids.has(id), `Stale benchmark: ${id}`);
+test("the pickers offer curated transcription models this engine can load", async () => {
+  // transcribe-cpp exports no package.json; the tests run from the repo root.
+  const engine = JSON.parse(await readFile("node_modules/transcribe-cpp/package.json", "utf8")) as { version: string };
+  assert.ok(CATALOG_MODELS.length > 0);
+  assert.equal(new Set(CATALOG_MODELS.map((model) => model.id)).size, CATALOG_MODELS.length);
+  for (const model of [...CATALOG_MODELS, LANGUAGE_DETECTION_MODEL]) {
+    assert.ok(modelFile(model).size > 0, model.id);
+  }
+  assert.ok(CATALOG_MODELS.every((model) => model.curated && model.role === "asr"));
+  assert.deepEqual(modelsForEngine(CATALOG_MODELS, engine.version), [...CATALOG_MODELS]);
+  assert.equal(LANGUAGE_DETECTION_MODEL.role, "langid");
+});
+
+test("saved settings resolve any published transcription model, never another role", () => {
+  const uncurated = ALL_MODELS.find((model) => model.role === "asr" && !model.curated);
+  assert.ok(uncurated, "the catalog publishes uncurated transcription models");
+  assert.equal(getCatalogModel(uncurated.id), uncurated);
+  for (const model of ALL_MODELS.filter((entry) => entry.role !== "asr")) {
+    assert.equal(getCatalogModel(model.id), undefined, model.id);
   }
 });
 

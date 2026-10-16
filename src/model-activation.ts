@@ -1,4 +1,4 @@
-import { LANGUAGE_DETECTION_MODEL, displayLanguage, type CatalogModel } from "./catalog.js";
+import { LANGUAGE_DETECTION_MODEL, displayLanguage, modelFile, type CatalogModel } from "./catalog.js";
 import { settingsLanguagePolicy } from "./language-detection-policy.js";
 import { describeError, log } from "./log.js";
 import { downloadCatalogModel, findCachedCatalogModel, pendingDownloads, type CachedCatalogModel } from "./models.js";
@@ -40,8 +40,8 @@ export function createModelActivation(options: {
     let detectorFailed = false;
     const pending = pendingDownloads(model, Boolean(cached));
     const detectorMissing = pending.includes(LANGUAGE_DETECTION_MODEL);
-    const asrBytes = cached ? 0 : model.size;
-    const total = pending.reduce((sum, item) => sum + item.size, 0);
+    const asrBytes = cached ? 0 : modelFile(model).size;
+    const total = pending.reduce((sum, item) => sum + modelFile(item).size, 0);
     if (cached) {
       // The picker listed the cache when it opened; re-check so settings
       // never point at a file that has since been evicted. Integrity is

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
 import type { LangIdResult } from "transcribe-cpp";
-import { CATALOG_MODELS, LANGUAGE_DETECTION_MODEL } from "../src/catalog.js";
+import { CATALOG_MODELS, LANGUAGE_DETECTION_MODEL, modelFile } from "../src/catalog.js";
 import { Deferred } from "../src/deferred.js";
 import { settingsForModel, settingsWithPreferredLanguages } from "../src/settings.js";
 import type { TranscriptionOptions } from "../src/transcription.js";
@@ -38,7 +38,7 @@ function harness(
   const streams: TranscriptionOptions[] = [];
   const asrCalls: TranscriptionOptions[] = [];
   const allowed: (readonly string[])[] = [];
-  const service = new TranscriptionService((path) => path.endsWith(LANGUAGE_DETECTION_MODEL.filename)
+  const service = new TranscriptionService((path) => path.endsWith(modelFile(LANGUAGE_DETECTION_MODEL).filename)
     ? {
       async prepare() {},
       async transcribe() { throw new Error("the detector never transcribes"); },

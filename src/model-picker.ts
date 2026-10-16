@@ -21,6 +21,7 @@ import {
   modelMatchesLanguage,
   rankCatalogModels,
   type CatalogModel,
+  modelFile,
 } from "./catalog.js";
 import {
   benchmarkModels,
@@ -507,7 +508,7 @@ export class CatalogModelPicker extends Container implements Focusable {
     );
     this.modelSizeWidth = Math.max(
       visibleWidth(ON_DISK_LABEL),
-      ...CATALOG_MODELS.map((model) => visibleWidth(formatBinarySize(model.size))),
+      ...CATALOG_MODELS.map((model) => visibleWidth(formatBinarySize(modelFile(model).size))),
     );
 
     const title = options.title ?? (options.onboardingStep ? "Browse all models" : "Choose a model");

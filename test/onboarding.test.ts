@@ -249,6 +249,54 @@ test("Escape from the initial recommendation still goes back to languages", asyn
   script.assertFinished();
 });
 
+// Klingon: a language no catalog model speaks, so there are no picks.
+const UNSPOKEN = "tlh";
+
+test("no model speaks the language: the catalog stands in for the recommendation", async (t) => {
+  assert.deepEqual(recommendModels(CATALOG_MODELS, [UNSPOKEN]), []);
+  isolatedSettings(t);
+  const script = scriptedContext([
+    (_pane, done) => done({ languages: [UNSPOKEN], confirmed: true }),
+    (pane) => {
+      assert.ok(pane instanceof CatalogModelPicker);
+      pane.handleInput("\x1b");
+    },
+    (pane, done) => {
+      assert.ok(pane instanceof LanguagePicker, "Escape goes back to languages");
+      done(undefined);
+    },
+  ]);
+  assert.equal(await runOnboarding(script.ctx), undefined);
+  script.assertFinished();
+});
+
+test("changing to languages no model speaks browses every model", async (t) => {
+  isolatedSettings(t);
+  const current = initialSettings();
+  await writeSettings(current);
+  const script = scriptedContext([
+    (pane) => {
+      assert.ok(pane instanceof RecommendedModelPicker);
+      pane.handleInput("\x0c");
+    },
+    (_pane, done) => done({ languages: [UNSPOKEN], confirmed: true }),
+    (pane) => {
+      assert.ok(pane instanceof CatalogModelPicker);
+      pane.handleInput("\x1b");
+    },
+  ]);
+  assert.equal(await changeOnboardingModel(script.ctx, current), undefined);
+  script.assertFinished();
+
+  // Saved languages that lost their models open the catalog directly.
+  const saved = scriptedContext([(pane) => {
+    assert.ok(pane instanceof CatalogModelPicker);
+    pane.handleInput("\x1b");
+  }]);
+  assert.equal(await changeOnboardingModel(saved.ctx, initialSettings([UNSPOKEN])), undefined);
+  saved.assertFinished();
+});
+
 test("Tab keeps forward actions while Ctrl+L changes languages across model panes", () => {
   let languageResult: unknown;
   const languages = new LanguagePicker(

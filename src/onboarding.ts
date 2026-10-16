@@ -255,9 +255,10 @@ export async function changeOnboardingModel(
     // Try it must not silently alter the settings it is about to test.
     languages = changed.languages;
     picks = recommendModels(CATALOG_MODELS, languages);
-    // Even a single pick deserves its recommendation after languages change.
-    recommending = true;
-    pane = "recommended";
+    // Even a single pick deserves its recommendation after languages change,
+    // but languages no model speaks have none: browse everything instead.
+    recommending = picks.length > 0;
+    pane = recommending ? "recommended" : "browse";
   }
 }
 
@@ -291,13 +292,10 @@ export async function runOnboarding(
 
     let changeLanguages = false;
     while (!changeLanguages) {
-      const recommendation = await chooseRecommendedModel(
-        ctx,
-        languages,
-        picks,
-        activate,
-        { onboardingStep: 2 },
-      );
+      // Languages no model speaks have no picks: go straight to every model.
+      const recommendation = picks.length > 0
+        ? await chooseRecommendedModel(ctx, languages, picks, activate, { onboardingStep: 2 })
+        : { type: "other-models" as const };
       await waitForCommits();
       if (!recommendation) return configured;
       if (recommendation.type === "complete" && configured) {
@@ -319,8 +317,9 @@ export async function runOnboarding(
       if (selection?.type === "complete" && configured) {
         return finishOnboarding(ctx, configured, (current) => changeOnboardingModel(ctx, current));
       }
-      if (selection?.type === "change-languages") changeLanguages = true;
-      // Esc from the complete selector returns to the recommendation pane.
+      // Esc from the complete selector returns to the recommendation pane,
+      // or to languages when there was none.
+      if (selection?.type === "change-languages" || picks.length === 0) changeLanguages = true;
     }
   }
 }

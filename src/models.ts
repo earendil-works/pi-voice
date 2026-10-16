@@ -7,7 +7,8 @@ import {
 import { createHash } from "node:crypto";
 import {
   createReadStream,
-  existsSync,
+  readdirSync,
+  realpathSync,
   statSync,
 } from "node:fs";
 import {
@@ -19,9 +20,10 @@ import {
   stat,
   symlink,
 } from "node:fs/promises";
-import { dirname, join, relative } from "node:path";
+import { basename, dirname, join, relative, sep } from "node:path";
 import type { ReadableStream } from "node:stream/web";
-import { LANGUAGE_DETECTION_MODEL, type CatalogModel } from "./catalog.js";
+import { ALL_MODELS } from "@handy-computer/models";
+import { getCatalogModel, LANGUAGE_DETECTION_MODEL, modelFile, type CatalogModel } from "./catalog.js";
 import { requiresLanguageDetector } from "./language-detection-policy.js";
 
 function repositoryCacheDirectory(model: CatalogModel): string {
@@ -31,25 +33,133 @@ function repositoryCacheDirectory(model: CatalogModel): string {
   );
 }
 
+/**
+ * How a cached copy relates to the catalog: the pinned bytes, a revision the
+ * catalog pinned before, or a snapshot it never shipped (another app's, or a
+ * commit between pins). Every one is used; only a copy that fails to load is
+ * set aside.
+ */
+export type CopyStatus = "current" | "outdated" | "unknown";
+
 export type CachedCatalogModel = {
   path: string;
 };
 
-/** Find the exact catalog revision in the standard Hugging Face cache. */
-export function findCachedCatalogModel(model: CatalogModel): CachedCatalogModel | undefined {
-  const path = join(
-    repositoryCacheDirectory(model),
-    "snapshots",
-    model.revision,
-    model.filename,
-  );
-  if (!existsSync(path)) return undefined;
+const STATUS_RANK: Record<CopyStatus, number> = { current: 0, outdated: 1, unknown: 2 };
+
+/**
+ * Copies that failed to load this session; the next pick downloads instead.
+ * On globalThis because Pi loads extensions without a module cache, so the
+ * lazy imports of this file can each get their own instance.
+ */
+const brokenCopies: Set<string> =
+  ((globalThis as { [key: symbol]: Set<string> | undefined })[Symbol.for("pi-voice.brokenModelCopies")] ??= new Set());
+
+function copyStatus(model: CatalogModel, revision: string, path: string): CopyStatus {
+  if (revision === model.revision) return "current";
   try {
-    return statSync(path).size === model.size ? { path } : undefined;
+    // Snapshot files link to blobs named by their sha256, so a commit that
+    // changed only the model card still holds the current bytes.
+    if (basename(realpathSync(path)) === modelFile(model).sha256) return "current";
   } catch {
-    // A cache entry can disappear during concurrent HF cache maintenance.
+    // Not a link into blobs (a copied file); judge it by revision alone.
+  }
+  return model.previousRevisions.includes(revision) ? "outdated" : "unknown";
+}
+
+/** When the file was written, if it is a readable file. */
+function fileWrittenAt(path: string): number | undefined {
+  try {
+    const stats = statSync(path);
+    return stats.isFile() ? stats.mtimeMs : undefined;
+  } catch {
+    // Missing, or a link whose blob is gone.
     return undefined;
   }
+}
+
+/**
+ * Where a snapshot holds this file: at its catalog path, else anywhere in the
+ * snapshot under the same name, since files move between folders across
+ * revisions (multitalker went into bundle/ and is coming back out).
+ */
+function snapshotCopies(snapshot: string, filename: string): string[] {
+  const exact = join(snapshot, filename);
+  let others: string[] = [];
+  try {
+    others = readdirSync(snapshot, { recursive: true, encoding: "utf8" })
+      .filter((entry) => basename(entry) === basename(filename))
+      .map((entry) => join(snapshot, entry))
+      .filter((path) => path !== exact);
+  } catch {
+    // An unreadable snapshot holds nothing usable.
+  }
+  return [exact, ...others];
+}
+
+/**
+ * The best copy of this model in the standard Hugging Face cache, in any
+ * snapshot: current bytes first, then the newest previous pin, then anything
+ * else with the file's name.
+ */
+export function findCachedCatalogModel(model: CatalogModel): CachedCatalogModel | undefined {
+  const { filename } = modelFile(model);
+  const snapshots = join(repositoryCacheDirectory(model), "snapshots");
+  let revisions: string[];
+  try {
+    revisions = readdirSync(snapshots);
+  } catch {
+    return undefined;
+  }
+  const found: { path: string; status: CopyStatus; order: number }[] = [];
+  for (const revision of revisions) {
+    const path = snapshotCopies(join(snapshots, revision), filename)
+      .find((candidate) => !brokenCopies.has(candidate) && fileWrittenAt(candidate) !== undefined);
+    const writtenAt = path && fileWrittenAt(path);
+    if (!path || writtenAt === undefined) continue;
+    const status = copyStatus(model, revision, path);
+    const previous = model.previousRevisions.indexOf(revision);
+    // Previous pins are newest first; other snapshots go newest-written first.
+    const order = status === "outdated" ? previous : status === "unknown" ? -writtenAt : 0;
+    found.push({ path, status, order });
+  }
+  found.sort((left, right) => STATUS_RANK[left.status] - STATUS_RANK[right.status] || left.order - right.order);
+  const best = found[0];
+  return best && { path: best.path };
+}
+
+/**
+ * The catalog model and status of a cached copy, from its path, when the path
+ * is a snapshot in the Hugging Face cache.
+ */
+export function cachedCopyAt(path: string): { model: CatalogModel; status: CopyStatus } | undefined {
+  const parts = relative(getHFHubCachePath(), path).split(sep);
+  const [folder, snapshots, revision] = parts;
+  if (snapshots !== "snapshots" || !revision || parts.length < 4) return undefined;
+  const id = ALL_MODELS.find(
+    (model) => getRepoFolderName({ name: model.repository, type: "model" }) === folder,
+  )?.id;
+  const model = (id && getCatalogModel(id)) || (id === LANGUAGE_DETECTION_MODEL.id ? LANGUAGE_DETECTION_MODEL : undefined);
+  return model && { model, status: copyStatus(model, revision, path) };
+}
+
+/**
+ * Explain a load failure. A copy the catalog didn't pin may simply be too old
+ * for this engine: set it aside so choosing the model again downloads the
+ * current file, and say so. Failures of the current file are left alone; they
+ * aren't the file's fault as far as anyone can tell.
+ */
+export function explainLoadFailure(path: string, error: unknown): unknown {
+  const copy = cachedCopyAt(path);
+  if (!copy || copy.status === "current") return error;
+  brokenCopies.add(path);
+  const message = error instanceof Error ? error.message : String(error);
+  const which = copy.status === "outdated" ? "an older version" : "a version Pi Voice doesn't recognize";
+  return new Error(
+    `${message}. This copy of ${copy.model.name} is ${which}; ` +
+      "run /voice-settings and choose it again to download the current one.",
+    { cause: error },
+  );
 }
 
 type DownloadProgress = {
@@ -80,10 +190,11 @@ export async function downloadCatalogModel(
   const fetchImpl = options.fetch ?? fetch;
   signal?.throwIfAborted();
 
+  const file = modelFile(model);
   const storage = repositoryCacheDirectory(model);
-  const pointerPath = join(storage, "snapshots", model.revision, model.filename);
-  if (await stat(pointerPath).then((value) => value.size === model.size, () => false)) {
-    onProgress?.({ downloaded: model.size, total: model.size });
+  const pointerPath = join(storage, "snapshots", model.revision, file.filename);
+  if (await stat(pointerPath).then((value) => value.size === file.size, () => false)) {
+    onProgress?.({ downloaded: file.size, total: file.size });
     return pointerPath;
   }
 
@@ -93,15 +204,15 @@ export async function downloadCatalogModel(
     fetchImpl(input, { ...init, signal });
   const info = await fileDownloadInfo({
     repo: model.repository,
-    path: model.filename,
+    path: file.filename,
     revision: model.revision,
     fetch: abortingFetch,
     ...credentials,
   });
-  if (!info) throw new Error(`Could not find ${model.filename} on Hugging Face`);
-  if (info.size !== model.size) {
+  if (!info) throw new Error(`Could not find ${file.filename} on Hugging Face`);
+  if (info.size !== file.size) {
     throw new Error(
-      `${model.name} size mismatch: catalog has ${model.size} bytes, Hugging Face reports ${info.size}`,
+      `${model.name} size mismatch: catalog has ${file.size} bytes, Hugging Face reports ${info.size}`,
     );
   }
 
@@ -112,13 +223,13 @@ export async function downloadCatalogModel(
   // catalog above), so a blob of any other size is a broken write by another
   // cache user and is replaced by a fresh download.
   const blobUsable = (): Promise<boolean> =>
-    stat(blobPath).then((value) => value.size === model.size, () => false);
+    stat(blobPath).then((value) => value.size === file.size, () => false);
   await mkdir(dirname(blobPath), { recursive: true });
   await mkdir(dirname(pointerPath), { recursive: true });
 
   if (await blobUsable()) {
     await createCacheLink(blobPath, pointerPath);
-    onProgress?.({ downloaded: model.size, total: model.size });
+    onProgress?.({ downloaded: file.size, total: file.size });
     return pointerPath;
   }
 
@@ -140,7 +251,7 @@ export async function downloadCatalogModel(
         digest.update(chunk as Buffer);
         downloaded += (chunk as Buffer).length;
       }
-      if (downloaded < model.size) {
+      if (downloaded < file.size) {
         const response = await abortingFetch(info.url, {
           headers: {
             Range: `bytes=${downloaded}-`,
@@ -162,7 +273,7 @@ export async function downloadCatalogModel(
         }
         const contentRange = response.headers.get("content-range");
         const range = contentRange?.match(/^bytes (\d+)-\d+\/(\d+)$/);
-        if (!range || Number(range[1]) !== downloaded || Number(range[2]) !== model.size) {
+        if (!range || Number(range[1]) !== downloaded || Number(range[2]) !== file.size) {
           // Never append a response for different bytes.
           await response.body.cancel().catch(() => undefined);
           throw new Error(
@@ -175,53 +286,53 @@ export async function downloadCatalogModel(
       await rm(partialPath, { force: true });
       const blob = await downloadFile({
         repo: model.repository,
-        path: model.filename,
+        path: file.filename,
         revision: model.revision,
         downloadInfo: info,
         fetch: abortingFetch,
         ...credentials,
       });
-      if (!blob) throw new Error(`Could not download ${model.filename}`);
+      if (!blob) throw new Error(`Could not download ${file.filename}`);
       body = blob.stream() as unknown as ReadableStream<Uint8Array>;
     }
 
-    onProgress?.({ downloaded, total: model.size });
+    onProgress?.({ downloaded, total: file.size });
     if (body) {
       let lastReport = 0;
-      const file = await open(partialPath, resume ? "a" : "w");
+      const handle = await open(partialPath, resume ? "a" : "w");
       try {
         for await (const value of body) {
           signal?.throwIfAborted();
           const chunk = Buffer.from(value.buffer, value.byteOffset, value.byteLength);
           // Await each write so any later abort or stream error leaves a clean,
           // fully written prefix that can safely be resumed.
-          await file.writeFile(chunk);
+          await handle.writeFile(chunk);
           downloaded += chunk.length;
           digest.update(chunk);
           const now = Date.now();
-          if (now - lastReport >= 100 || downloaded === model.size) {
+          if (now - lastReport >= 100 || downloaded === file.size) {
             lastReport = now;
-            onProgress?.({ downloaded, total: model.size });
+            onProgress?.({ downloaded, total: file.size });
           }
         }
       } finally {
-        await file.close();
+        await handle.close();
       }
     }
     signal?.throwIfAborted();
 
     const written = await stat(partialPath);
-    if (written.size < model.size) {
+    if (written.size < file.size) {
       throw new Error(`${model.name} download ended early; partial bytes were kept`);
     }
-    if (written.size > model.size || digest.digest("hex") !== model.sha256) {
+    if (written.size > file.size || digest.digest("hex") !== file.sha256) {
       await rm(partialPath, { force: true });
       throw new Error(`${model.name} verification failed; incomplete bytes were removed`);
     }
   };
 
   const partialBytes = await stat(partialPath).then((value) => value.size, () => 0);
-  await transfer(partialBytes > 0 && partialBytes <= model.size);
+  await transfer(partialBytes > 0 && partialBytes <= file.size);
 
   if (await blobUsable()) {
     await rm(partialPath, { force: true });
@@ -236,7 +347,7 @@ export async function downloadCatalogModel(
     }
   }
   await createCacheLink(blobPath, pointerPath);
-  onProgress?.({ downloaded: model.size, total: model.size });
+  onProgress?.({ downloaded: file.size, total: file.size });
   return pointerPath;
 }
 
@@ -244,6 +355,7 @@ export async function downloadCatalogModel(
 export function findIncompleteDownload(
   model: CatalogModel,
 ): { bytes: number } | undefined {
+  const file = modelFile(model);
   // For these LFS-backed files the cache key (the server etag) is the content
   // sha256, so the catalog names the partial exactly; partials from other
   // revisions can never match. If the server ever reported a different etag,
@@ -252,11 +364,11 @@ export function findIncompleteDownload(
   const partialPath = join(
     repositoryCacheDirectory(model),
     "blobs",
-    `${model.sha256}.incomplete`,
+    `${file.sha256}.incomplete`,
   );
   try {
     const bytes = statSync(partialPath).size;
-    if (bytes > 0 && bytes < model.size) return { bytes };
+    if (bytes > 0 && bytes < file.size) return { bytes };
   } catch {
     // Missing file means no partial download.
   }

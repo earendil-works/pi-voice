@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import benchmark from "../catalog/recommendations.json" with { type: "json" };
+import { catalog } from "@handy-computer/models";
 import { CATALOG_MODELS, languageIdentity } from "../src/catalog.js";
 import { hasRecommendedAlternatives } from "../src/recommendation-picker.js";
 import {
@@ -28,7 +28,7 @@ test("every role is assigned and usable models never mix with fallback alternati
         assert.ok(picks.every((pick) => pick.status === "eligible" && !pick.overFloor));
         assert.ok(
           picks.every(
-            (pick) => pick.worstError! < benchmark.methodology.maxLanguageErrorPercent,
+            (pick) => pick.worstError! < catalog.methodology.maxLanguageErrorPercent,
           ),
         );
       } else {
@@ -48,8 +48,7 @@ test("language aliases produce identical recommendations", () => {
 });
 
 test("fallback statuses and preferred-language visibility follow the methodology", () => {
-  const models: Record<string, { accuracy: Record<string, { ciLower?: number }> }> =
-    benchmark.models;
+  const models = catalog.data.results;
   const preferred = new Set(getPreferredRecommendationLanguages(CATALOG_MODELS));
   for (const language of languages) {
     const pick = recommendModels(CATALOG_MODELS, [language])[0]!;
