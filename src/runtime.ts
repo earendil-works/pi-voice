@@ -297,7 +297,11 @@ export function createPiVoiceRuntime(
       if (!result) {
         await reportDictationError(ctx, active.dictation);
       } else if (result.text) {
-        ctx.ui.pasteToEditor(result.text);
+        const transcript = { text: result.text };
+        pi.events.emit("pi-voice:before-insert", transcript);
+        ctx.ui.pasteToEditor(
+          typeof transcript.text === "string" ? transcript.text : result.text,
+        );
         showTranscribeStatus(
           ctx,
           formatTranscriptionSummary(result.speechSeconds, result.transcribeSeconds),
