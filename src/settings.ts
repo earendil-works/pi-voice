@@ -43,7 +43,6 @@ export type TranscribeSettings = {
   voiceActivityDetection: boolean;
   /** Hidden, settings.json only: false decodes long audio in one piece, without voice activity cuts. */
   longformChunking: boolean;
-  /** Hidden, settings.json only, written only when set: how the model reaches transcribe_file. */
   toolExposure?: ToolExposureSetting;
   model: {
     source: "catalog";
@@ -137,8 +136,7 @@ function validateSettings(value: unknown): TranscribeSettings | undefined {
   const preferredLanguages = normalizeLanguages(value.preferredLanguages);
   const microphone = validateMicrophone(value.microphone);
   if (!preferredLanguages || !microphone) return undefined;
-  // An invalid value is dropped, not fatal; registration warns about it.
-  const { setting: toolExposure } = parseToolExposure(value.toolExposure);
+  const { setting: validToolExposure } = parseToolExposure(value.toolExposure);
 
   return {
     version: SETTINGS_VERSION,
@@ -154,7 +152,7 @@ function validateSettings(value: unknown): TranscribeSettings | undefined {
     microphone,
     voiceActivityDetection: value.voiceActivityDetection !== false,
     longformChunking: value.longformChunking !== false,
-    ...(toolExposure ? { toolExposure } : {}),
+    ...(validToolExposure ? { toolExposure: validToolExposure } : {}),
     model: {
       source: "catalog",
       id: value.model.id,

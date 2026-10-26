@@ -70,15 +70,13 @@ When FFmpeg is unavailable, `transcribe_file` reports platform-specific guidance
 
 ### Keeping `transcribe_file` out of the context
 
-By default the agent sees `transcribe_file` on every request, like a built-in tool. To have it behave like an MCP tool with `codemode` exposure instead (not declared to the model, but callable from `codemode` scripts), add this to `~/.pi/agent/pi-voice.json` after running `/voice-settings` once:
+To hide `transcribe_file` from the model but keep it callable from `codemode` scripts, like an MCP tool with `codemode` exposure, add this to `~/.pi/agent/pi-voice.json` once `/voice-settings` has run:
 
 ```json
 "toolExposure": { "transcribe_file": "codemode" }
 ```
 
-The values are `direct` (the default) and `codemode`. The change applies on the next start or `/reload`. Scripts find the tool with `searchTools("transcribe")` and call it with `tools.transcribe_file({ path })`. Keep `codemode` enabled, for example with `"defaultTools": ["+codemode"]` in Pi's `settings.json`; Pi Voice does not turn it on. This hides the tool from the model's tool list; it is not a permission boundary.
-
-The full saving needs Pi 0.99.2 or later. Pi 0.99.0 and 0.99.1 hide the tool but still list it in the `codemode` description. Older Pi ignores the setting, keeps `transcribe_file` as a direct tool, and logs a warning. Dictation and the commands are unaffected.
+Applies on the next start or `/reload`. `codemode` must be enabled (`"defaultTools": ["+codemode"]`). Requires Pi 0.99.2 or later; before 0.99.0 the setting is ignored and a warning is logged.
 
 ## Developing & Building Pi Voice
 

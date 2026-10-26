@@ -53,9 +53,15 @@ test("the old debug flag is not a compatibility alias", () => {
   }
 });
 
+const UPSTREAM_PROMPT_SNIPPET = "Transcribe speech from local audio or video files with a local model";
+const UPSTREAM_PROMPT_GUIDELINES = [
+  "Use transcribe_file when speech in a local audio or video file needs to be read, analyzed, or transcribed.",
+  "transcribe_file automatically queues model work, with interactive dictation taking priority over queued files.",
+  "If transcribe_file reports that FFmpeg is unavailable, explain the installation guidance and ask the user before running a system package-manager command.",
+];
+
 type HostMetadata = "deferred" | "no-exposure" | "direct" | "missing";
 
-/** One host per test: registers Pi Voice against a fake Pi in its own agent dir. */
 function fakeHost(t: TestContext, toolExposure: unknown, metadata: HostMetadata = "deferred") {
   const previousDir = process.env.PI_CODING_AGENT_DIR;
   const previousDebug = process.env.PI_VOICE_DEBUG;
@@ -92,7 +98,6 @@ function fakeHost(t: TestContext, toolExposure: unknown, metadata: HostMetadata 
     getCommands: () => [],
     getAllTools() {
       if (metadata === "missing" || !tool) return [];
-      // Pi 0.83 lists tools without their exposure; Pi >= 0.99 reports it.
       if (metadata === "no-exposure") return [{ name: tool.name }];
       return [{ name: tool.name, exposure: metadata === "direct" ? "direct" : tool.exposure }];
     },
@@ -121,7 +126,7 @@ function fakeHost(t: TestContext, toolExposure: unknown, metadata: HostMetadata 
   };
 }
 
-test("registration follows the toolExposure setting and keeps the default prompt text", async (t) => {
+test("registration maps codemode to deferred like Pi's MCP support and keeps the upstream prompt text", async (t) => {
   const cases: Array<[unknown, string, number]> = [
     [undefined, "direct", 0],
     [{ transcribe_file: "direct" }, "direct", 0],
@@ -136,13 +141,8 @@ test("registration follows the toolExposure setting and keeps the default prompt
       assert.equal(host.warnings(), warnings);
       assert.equal(host.shortcut(), setting === undefined ? "ctrl+alt+z" : "ctrl+alt+x");
       assert.deepEqual(host.commands, ["voice", "voice-settings", "transcribe"]);
-      // Unchanged from main: the opt-in must not alter what default users see.
-      assert.equal(tool.promptSnippet, "Transcribe speech from local audio or video files with a local model");
-      assert.deepEqual(tool.promptGuidelines, [
-        "Use transcribe_file when speech in a local audio or video file needs to be read, analyzed, or transcribed.",
-        "transcribe_file automatically queues model work, with interactive dictation taking priority over queued files.",
-        "If transcribe_file reports that FFmpeg is unavailable, explain the installation guidance and ask the user before running a system package-manager command.",
-      ]);
+      assert.equal(tool.promptSnippet, UPSTREAM_PROMPT_SNIPPET);
+      assert.deepEqual(tool.promptGuidelines, UPSTREAM_PROMPT_GUIDELINES);
     });
   }
 });

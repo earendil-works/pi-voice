@@ -31,7 +31,6 @@ type FileTranscriptionDetails = {
 type FileTranscriptionOptions = {
   getSettings: () => Promise<TranscribeSettings>;
   getService: () => Promise<TranscriptionService>;
-  /** "deferred" keeps the tool out of the model's declared tools, callable from codemode. */
   exposure?: "direct" | "deferred";
 };
 
@@ -66,24 +65,33 @@ async function saveFullTranscript(text: string): Promise<string> {
   return path;
 }
 
-function deactivateOnSessionStart(pi: ExtensionAPI): void {
+const TOOL_NAME = "transcribe_file";
+
+function findRegisteredTool(pi: ExtensionAPI) {
+  return pi.getAllTools().find((tool) => tool.name === TOOL_NAME);
+}
+
+function hostSupportsDeferredExposure(tool: object): boolean {
+  return "exposure" in tool && tool.exposure === "deferred";
+}
+
+function removeFromActiveTools(pi: ExtensionAPI): void {
+  const active = pi.getActiveTools();
+  if (active.includes(TOOL_NAME)) pi.setActiveTools(active.filter((name) => name !== TOOL_NAME));
+}
+
+function deactivateAfterReloadOrResumeRestoresIt(pi: ExtensionAPI): void {
   let warnedUnsupportedHost = false;
   pi.on("session_start", () => {
-    const tool = pi.getAllTools().find((candidate) => candidate.name === "transcribe_file");
-    if (!tool) return; // Excluded by the host (--tools, --exclude-tools): leave it alone.
-    if (!("exposure" in tool) || tool.exposure !== "deferred") {
-      if (!warnedUnsupportedHost) {
-        log.warn(
-          "toolExposure.transcribe_file=codemode needs Pi >= 0.99.2; this Pi does not support deferred tools, so transcribe_file stays a direct tool.",
-        );
-        warnedUnsupportedHost = true;
-      }
-      return;
-    }
-    // Reload and resume restore previously active tools, including this one.
-    const active = pi.getActiveTools();
-    if (active.includes("transcribe_file")) {
-      pi.setActiveTools(active.filter((name) => name !== "transcribe_file"));
+    const tool = findRegisteredTool(pi);
+    if (!tool) return;
+    if (hostSupportsDeferredExposure(tool)) {
+      removeFromActiveTools(pi);
+    } else if (!warnedUnsupportedHost) {
+      log.warn(
+        `toolExposure.${TOOL_NAME}=codemode needs Pi >= 0.99.2; this Pi does not support deferred tools, so ${TOOL_NAME} stays a direct tool.`,
+      );
+      warnedUnsupportedHost = true;
     }
   });
 }
@@ -107,10 +115,11 @@ export function registerFileTranscriptionTool(
   }
 
   const exposure: "direct" | "deferred" = options.exposure ?? "direct";
-  if (exposure === "deferred") deactivateOnSessionStart(pi);
+  if (exposure === "deferred") deactivateAfterReloadOrResumeRestoresIt(pi);
+  const exposureMissingFromPi083Types = { exposure };
 
   pi.registerTool({
-    ...{ exposure }, // Pi 0.83 types predate `exposure`; the spread keeps parameter inference.
+    ...exposureMissingFromPi083Types,
     name: "transcribe_file",
     label: "Transcribe File",
     description: `Transcribe speech from a local audio or video file using Pi Voice's configured local model. Requires the ffmpeg executable on PATH (or PI_VOICE_FFMPEG_PATH). Output is truncated to ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}; a complete transcript is saved to a temporary file when needed.`,

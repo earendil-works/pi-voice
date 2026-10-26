@@ -213,9 +213,8 @@ test("back after confirming new languages leaves settings unchanged until a mode
 });
 
 test("exiting first-run languages after a committed selection preserves saved settings", async (t) => {
-  // Replaying onboarding passes the existing opt-in, which must survive the new model commit.
   for (const toolExposure of [undefined, { transcribe_file: "codemode" } as const]) {
-    await t.test(toolExposure ? "with toolExposure" : "first run", async (t) => {
+    await t.test(toolExposure ? "replay keeps the toolExposure opt-in" : "first run", async (t) => {
       isolatedSettings(t);
       const cache = isolatedModelCache(t);
       cacheCatalogModel(cache, LANGUAGE_DETECTION_MODEL);
