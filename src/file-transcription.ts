@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { Type } from "typebox";
 import { AsyncLimiter } from "./async-limiter.js";
+import { log } from "./log.js";
 import type { TranscribeSettings } from "./settings.js";
 import type { TranscriptionService } from "./transcription-service.js";
 
@@ -30,6 +31,8 @@ type FileTranscriptionDetails = {
 type FileTranscriptionOptions = {
   getSettings: () => Promise<TranscribeSettings>;
   getService: () => Promise<TranscriptionService>;
+  /** "deferred" keeps the tool out of the model's declared tools, callable from codemode. */
+  exposure?: "direct" | "deferred";
 };
 
 export type FileTranscriptionController = {
@@ -63,6 +66,28 @@ async function saveFullTranscript(text: string): Promise<string> {
   return path;
 }
 
+function deactivateOnSessionStart(pi: ExtensionAPI): void {
+  let warnedUnsupportedHost = false;
+  pi.on("session_start", () => {
+    const tool = pi.getAllTools().find((candidate) => candidate.name === "transcribe_file");
+    if (!tool) return; // Excluded by the host (--tools, --exclude-tools): leave it alone.
+    if (!("exposure" in tool) || tool.exposure !== "deferred") {
+      if (!warnedUnsupportedHost) {
+        log.warn(
+          "toolExposure.transcribe_file=codemode needs Pi >= 0.99.2; this Pi does not support deferred tools, so transcribe_file stays a direct tool.",
+        );
+        warnedUnsupportedHost = true;
+      }
+      return;
+    }
+    // Reload and resume restore previously active tools, including this one.
+    const active = pi.getActiveTools();
+    if (active.includes("transcribe_file")) {
+      pi.setActiveTools(active.filter((name) => name !== "transcribe_file"));
+    }
+  });
+}
+
 export function registerFileTranscriptionTool(
   pi: ExtensionAPI,
   options: FileTranscriptionOptions,
@@ -81,7 +106,11 @@ export function registerFileTranscriptionTool(
     return tracked;
   }
 
+  const exposure: "direct" | "deferred" = options.exposure ?? "direct";
+  if (exposure === "deferred") deactivateOnSessionStart(pi);
+
   pi.registerTool({
+    ...{ exposure }, // Pi 0.83 types predate `exposure`; the spread keeps parameter inference.
     name: "transcribe_file",
     label: "Transcribe File",
     description: `Transcribe speech from a local audio or video file using Pi Voice's configured local model. Requires the ffmpeg executable on PATH (or PI_VOICE_FFMPEG_PATH). Output is truncated to ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}; a complete transcript is saved to a temporary file when needed.`,

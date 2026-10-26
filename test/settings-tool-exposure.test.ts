@@ -9,6 +9,8 @@ import {
   settingsWithPreferredLanguages,
   writeSettings,
 } from "../src/settings.js";
+import { DEFAULT_SHORTCUT } from "../src/shortcut-core.js";
+import { readRegistrationSettings } from "../src/startup-shortcut.js";
 
 const MODEL = "parakeet-unified-en-0.6b";
 const CODEMODE = { transcribe_file: "codemode" } as const;
@@ -68,4 +70,42 @@ test("default settings files do not gain a toolExposure key", async (t) => {
   await writeSettings(settingsForModel(MODEL, "/tmp/model"));
   const onDisk = JSON.parse(await readFile(join(directory, "pi-voice.json"), "utf8")) as object;
   assert.equal("toolExposure" in onDisk, false);
+});
+
+test("the registration reader returns the opt-in from a configured file", async (t) => {
+  const directory = await isolatedSettings(t);
+  const file = { ...settingsForModel(MODEL, "/tmp/model", { shortcut: "ctrl+alt+x" }), toolExposure: CODEMODE };
+  await writeFile(join(directory, "pi-voice.json"), JSON.stringify(file), "utf8");
+  assert.deepEqual(readRegistrationSettings(), {
+    shortcut: "ctrl+alt+x",
+    toolExposure: CODEMODE,
+    invalidToolExposure: false,
+  });
+});
+
+test("the registration reader ignores the opt-in in an unconfigured file", async (t) => {
+  const directory = await isolatedSettings(t);
+  await writeFile(join(directory, "pi-voice.json"), JSON.stringify({ toolExposure: CODEMODE }), "utf8");
+  assert.deepEqual(readRegistrationSettings(), {
+    shortcut: DEFAULT_SHORTCUT,
+    invalidToolExposure: false,
+  });
+});
+
+test("the registration reader flags an invalid opt-in", async (t) => {
+  const directory = await isolatedSettings(t);
+  const file = { ...settingsForModel(MODEL, "/tmp/model"), toolExposure: { transcribe_file: "deferred" } };
+  await writeFile(join(directory, "pi-voice.json"), JSON.stringify(file), "utf8");
+  const result = readRegistrationSettings();
+  assert.equal(result.toolExposure, undefined);
+  assert.equal(result.invalidToolExposure, true);
+});
+
+test("the registration reader survives malformed JSON", async (t) => {
+  const directory = await isolatedSettings(t);
+  await writeFile(join(directory, "pi-voice.json"), "{ not json", "utf8");
+  assert.deepEqual(readRegistrationSettings(), {
+    shortcut: DEFAULT_SHORTCUT,
+    invalidToolExposure: false,
+  });
 });
