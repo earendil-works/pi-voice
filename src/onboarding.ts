@@ -26,6 +26,7 @@ import {
   type TranscribeSettings,
   type TranscriptionLanguage,
 } from "./settings.js";
+import type { ToolExposureSetting } from "./tool-exposure.js";
 import { DEFAULT_SHORTCUT } from "./shortcut-core.js";
 
 function requireTui(ctx: ExtensionContext): boolean {
@@ -58,6 +59,7 @@ type ModelSelectionOptions = {
   microphone?: MicrophoneSetting;
   voiceActivityDetection?: boolean;
   longformChunking?: boolean;
+  toolExposure?: ToolExposureSetting;
   /** Persists language changes made before this flow activates a model. */
   onPreferredLanguagesChange?: (languages: string[]) => Promise<void>;
   postActivation?: CatalogModelPostActivation;
@@ -84,6 +86,7 @@ export async function runModelSelection(
       microphone: configured?.microphone ?? options.microphone ?? DEFAULT_MICROPHONE,
       voiceActivityDetection: configured?.voiceActivityDetection ?? options.voiceActivityDetection,
       longformChunking: configured?.longformChunking ?? options.longformChunking,
+      toolExposure: configured?.toolExposure ?? options.toolExposure,
     }),
     (settings) => {
       configured = settings;
@@ -214,6 +217,7 @@ export async function changeOnboardingModel(
       chineseOutput: current.chineseOutput,
       voiceActivityDetection: current.voiceActivityDetection,
       longformChunking: current.longformChunking,
+      toolExposure: current.toolExposure,
     }),
     (settings) => {
       chosen = settings;

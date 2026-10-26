@@ -149,6 +149,7 @@ export function createPiVoiceRuntime(
       microphone: previous.microphone,
       voiceActivityDetection: previous.voiceActivityDetection,
       longformChunking: previous.longformChunking,
+      toolExposure: previous.toolExposure,
       postActivation: "advance",
     });
     if (configured) rememberSettings(configured);

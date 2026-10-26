@@ -8,6 +8,7 @@ import {
 import { autoLanguagePolicy } from "./language-detection-policy.js";
 import { DEFAULT_SHORTCUT, normalizeShortcut } from "./shortcut-core.js";
 import { legacySettingsPath, settingsPath } from "./settings-path.js";
+import { parseToolExposure, type ToolExposureSetting } from "./tool-exposure.js";
 
 const SETTINGS_VERSION = 1;
 
@@ -42,6 +43,8 @@ export type TranscribeSettings = {
   voiceActivityDetection: boolean;
   /** Hidden, settings.json only: false decodes long audio in one piece, without voice activity cuts. */
   longformChunking: boolean;
+  /** Hidden, settings.json only, written only when set: how the model reaches transcribe_file. */
+  toolExposure?: ToolExposureSetting;
   model: {
     source: "catalog";
     id: string;
@@ -134,6 +137,8 @@ function validateSettings(value: unknown): TranscribeSettings | undefined {
   const preferredLanguages = normalizeLanguages(value.preferredLanguages);
   const microphone = validateMicrophone(value.microphone);
   if (!preferredLanguages || !microphone) return undefined;
+  // An invalid value is dropped, not fatal; registration warns about it.
+  const { setting: toolExposure } = parseToolExposure(value.toolExposure);
 
   return {
     version: SETTINGS_VERSION,
@@ -149,6 +154,7 @@ function validateSettings(value: unknown): TranscribeSettings | undefined {
     microphone,
     voiceActivityDetection: value.voiceActivityDetection !== false,
     longformChunking: value.longformChunking !== false,
+    ...(toolExposure ? { toolExposure } : {}),
     model: {
       source: "catalog",
       id: value.model.id,
@@ -217,6 +223,7 @@ type ModelSettingsOptions = {
   microphone?: MicrophoneSetting;
   voiceActivityDetection?: boolean;
   longformChunking?: boolean;
+  toolExposure?: ToolExposureSetting;
 };
 
 export function settingsForModel(
@@ -243,6 +250,7 @@ export function settingsForModel(
     microphone: { ...(options.microphone ?? DEFAULT_MICROPHONE) },
     voiceActivityDetection: options.voiceActivityDetection ?? true,
     longformChunking: options.longformChunking ?? true,
+    ...(options.toolExposure ? { toolExposure: { ...options.toolExposure } } : {}),
     model: { source: "catalog", id: modelId, path: modelPath },
   };
 }
