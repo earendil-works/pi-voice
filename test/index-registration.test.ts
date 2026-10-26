@@ -53,29 +53,31 @@ test("the old debug flag is not a compatibility alias", () => {
   }
 });
 
-type HostMetadata = "deferred-capable" | "no-exposure" | "missing";
+type HostMetadata = "deferred" | "no-exposure" | "direct" | "missing";
 
-const restoresAgentDir = new WeakSet<TestContext>();
-
-function fakeHost(t: TestContext, toolExposure: unknown, metadata: HostMetadata = "deferred-capable") {
-  // One restore per test: several hosts in a test must not restore each other's directories.
-  if (!restoresAgentDir.has(t)) {
-    restoresAgentDir.add(t);
-    const original = process.env.PI_CODING_AGENT_DIR;
-    t.after(() => {
-      if (original === undefined) delete process.env.PI_CODING_AGENT_DIR;
-      else process.env.PI_CODING_AGENT_DIR = original;
-    });
-  }
+/** One host per test: registers Pi Voice against a fake Pi in its own agent dir. */
+function fakeHost(t: TestContext, toolExposure: unknown, metadata: HostMetadata = "deferred") {
+  const previousDir = process.env.PI_CODING_AGENT_DIR;
+  const previousDebug = process.env.PI_VOICE_DEBUG;
   const directory = mkdtempSync(join(tmpdir(), "pi-voice-registration-test-"));
   process.env.PI_CODING_AGENT_DIR = directory;
-  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  delete process.env.PI_VOICE_DEBUG;
+  t.after(() => {
+    if (previousDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previousDir;
+    if (previousDebug !== undefined) process.env.PI_VOICE_DEBUG = previousDebug;
+    rmSync(directory, { recursive: true, force: true });
+  });
   if (toolExposure !== undefined) {
-    const file = { ...settingsForModel("parakeet-unified-en-0.6b", "/tmp/model"), toolExposure };
+    const file = {
+      ...settingsForModel("parakeet-unified-en-0.6b", "/tmp/model", { shortcut: "ctrl+alt+x" }),
+      toolExposure,
+    };
     writeFileSync(join(directory, "pi-voice.json"), JSON.stringify(file), "utf8");
   }
 
   let tool: Record<string, unknown> | undefined;
+  let shortcut: unknown;
   const commands: string[] = [];
   const startHandlers: Array<(event: unknown, ctx: unknown) => unknown> = [];
   let active = ["read", "transcribe_file", "bash"];
@@ -85,15 +87,14 @@ function fakeHost(t: TestContext, toolExposure: unknown, metadata: HostMetadata 
       if (event === "session_start") startHandlers.push(handler);
     },
     registerTool(definition: Record<string, unknown>) { tool = definition; },
-    registerShortcut() {},
+    registerShortcut(key: unknown) { shortcut = key; },
     registerCommand(name: string) { commands.push(name); },
     getCommands: () => [],
     getAllTools() {
       if (metadata === "missing" || !tool) return [];
       // Pi 0.83 lists tools without their exposure; Pi >= 0.99 reports it.
-      return [metadata === "no-exposure"
-        ? { name: tool.name }
-        : { name: tool.name, exposure: tool.exposure }];
+      if (metadata === "no-exposure") return [{ name: tool.name }];
+      return [{ name: tool.name, exposure: metadata === "direct" ? "direct" : tool.exposure }];
     },
     getActiveTools: () => [...active],
     setActiveTools(names: string[]) { active = [...names]; setCalls++; },
@@ -103,6 +104,7 @@ function fakeHost(t: TestContext, toolExposure: unknown, metadata: HostMetadata 
   const ctx = { mode: "print", ui: { notify() {} } };
   return {
     tool: () => tool!,
+    shortcut: () => shortcut,
     commands,
     active: () => active,
     setCalls: () => setCalls,
@@ -119,37 +121,30 @@ function fakeHost(t: TestContext, toolExposure: unknown, metadata: HostMetadata 
   };
 }
 
-test("transcribe_file exposure follows the toolExposure setting", (t) => {
-  const cases: Array<[unknown, string]> = [
-    [undefined, "direct"],
-    [{ transcribe_file: "direct" }, "direct"],
-    [{ transcribe_file: "codemode" }, "deferred"],
-    [{ transcribe_file: "deferred" }, "direct"],
+test("registration follows the toolExposure setting and keeps the default prompt text", async (t) => {
+  const cases: Array<[unknown, string, number]> = [
+    [undefined, "direct", 0],
+    [{ transcribe_file: "direct" }, "direct", 0],
+    [{ transcribe_file: "codemode" }, "deferred", 0],
+    [{ transcribe_file: "deferred" }, "direct", 1],
   ];
-  const baseline = fakeHost(t, undefined).tool();
-  for (const [setting, expected] of cases) {
-    const host = fakeHost(t, setting);
-    const tool = host.tool();
-    assert.equal(tool.exposure, expected, JSON.stringify(setting));
-    assert.equal(tool.promptSnippet, baseline.promptSnippet);
-    assert.deepEqual(tool.promptGuidelines, baseline.promptGuidelines);
-    assert.deepEqual(host.commands, ["voice", "voice-settings", "transcribe"]);
+  for (const [setting, exposure, warnings] of cases) {
+    await t.test(JSON.stringify(setting) ?? "no settings file", (t) => {
+      const host = fakeHost(t, setting);
+      const tool = host.tool();
+      assert.equal(tool.exposure, exposure);
+      assert.equal(host.warnings(), warnings);
+      assert.equal(host.shortcut(), setting === undefined ? "ctrl+alt+z" : "ctrl+alt+x");
+      assert.deepEqual(host.commands, ["voice", "voice-settings", "transcribe"]);
+      // Unchanged from main: the opt-in must not alter what default users see.
+      assert.equal(tool.promptSnippet, "Transcribe speech from local audio or video files with a local model");
+      assert.deepEqual(tool.promptGuidelines, [
+        "Use transcribe_file when speech in a local audio or video file needs to be read, analyzed, or transcribed.",
+        "transcribe_file automatically queues model work, with interactive dictation taking priority over queued files.",
+        "If transcribe_file reports that FFmpeg is unavailable, explain the installation guidance and ask the user before running a system package-manager command.",
+      ]);
+    });
   }
-});
-
-test("several hosts in one test restore the original agent directory", async () => {
-  const original = process.env.PI_CODING_AGENT_DIR;
-  await test("multi-host", (t) => {
-    fakeHost(t, undefined);
-    fakeHost(t, { transcribe_file: "codemode" });
-    fakeHost(t, { transcribe_file: "direct" });
-  });
-  assert.equal(process.env.PI_CODING_AGENT_DIR, original);
-});
-
-test("an invalid toolExposure is logged at registration", (t) => {
-  assert.equal(fakeHost(t, { transcribe_file: "deferred" }).warnings(), 1);
-  assert.equal(fakeHost(t, { transcribe_file: "codemode" }).warnings(), 0);
 });
 
 test("opted in on a capable host, session start removes only transcribe_file", async (t) => {
@@ -161,13 +156,17 @@ test("opted in on a capable host, session start removes only transcribe_file", a
   assert.equal(host.warnings(), 0);
 });
 
-test("opted in on a host without exposure support, activation stays and one warning is logged", async (t) => {
-  const host = fakeHost(t, { transcribe_file: "codemode" }, "no-exposure");
-  await host.start();
-  await host.start();
-  assert.deepEqual(host.active(), ["read", "transcribe_file", "bash"]);
-  assert.equal(host.setCalls(), 0);
-  assert.equal(host.warnings(), 1);
+test("opted in on a host that does not report deferred, activation stays and one warning is logged", async (t) => {
+  for (const metadata of ["no-exposure", "direct"] as const) {
+    await t.test(metadata, async (t) => {
+      const host = fakeHost(t, { transcribe_file: "codemode" }, metadata);
+      await host.start();
+      await host.start();
+      assert.deepEqual(host.active(), ["read", "transcribe_file", "bash"]);
+      assert.equal(host.setCalls(), 0);
+      assert.equal(host.warnings(), 1);
+    });
+  }
 });
 
 test("opted in but the tool is not registered with the host: nothing happens", async (t) => {

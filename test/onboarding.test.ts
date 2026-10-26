@@ -213,45 +213,49 @@ test("back after confirming new languages leaves settings unchanged until a mode
 });
 
 test("exiting first-run languages after a committed selection preserves saved settings", async (t) => {
-  isolatedSettings(t);
-  const cache = isolatedModelCache(t);
-  cacheCatalogModel(cache, LANGUAGE_DETECTION_MODEL);
-  for (const pick of recommendModels(CATALOG_MODELS, ["en"])) {
-    cacheCatalogModel(cache, pick.model);
+  // Replaying onboarding passes the existing opt-in, which must survive the new model commit.
+  for (const toolExposure of [undefined, { transcribe_file: "codemode" } as const]) {
+    await t.test(toolExposure ? "with toolExposure" : "first run", async (t) => {
+      isolatedSettings(t);
+      const cache = isolatedModelCache(t);
+      cacheCatalogModel(cache, LANGUAGE_DETECTION_MODEL);
+      for (const pick of recommendModels(CATALOG_MODELS, ["en"])) {
+        cacheCatalogModel(cache, pick.model);
+      }
+      const script = scriptedContext([
+        (_pane, done) => done({ languages: ["en"], confirmed: true }),
+        (pane) => {
+          assert.ok(pane instanceof RecommendedModelPicker);
+          // Back waits for the cached model's settings commit instead of losing it.
+          pane.handleInput("\r");
+          pane.handleInput("\x1b");
+        },
+        (_pane, done) => done(undefined),
+      ]);
+      const configured = await runOnboarding(script.ctx, undefined, toolExposure);
+      script.assertFinished();
+      assert.ok(configured);
+      assert.deepEqual(configured.toolExposure, toolExposure);
+      assert.deepEqual((await readSettings()).settings, configured);
+    });
   }
-  const script = scriptedContext([
-    (_pane, done) => done({ languages: ["en"], confirmed: true }),
-    (pane) => {
-      assert.ok(pane instanceof RecommendedModelPicker);
-      // Back waits for the cached model's settings commit instead of losing it.
-      pane.handleInput("\r");
-      pane.handleInput("\x1b");
-    },
-    (_pane, done) => done(undefined),
-  ]);
-  const configured = await runOnboarding(script.ctx);
-  script.assertFinished();
-  assert.ok(configured);
-  assert.deepEqual((await readSettings()).settings, configured);
 });
 
-test("replaying onboarding keeps an existing toolExposure opt-in", async (t) => {
+test("a /voice-settings model change keeps the toolExposure opt-in", async (t) => {
   isolatedSettings(t);
   const cache = isolatedModelCache(t);
   cacheCatalogModel(cache, LANGUAGE_DETECTION_MODEL);
-  for (const pick of recommendModels(CATALOG_MODELS, ["en"])) {
-    cacheCatalogModel(cache, pick.model);
-  }
-  const script = scriptedContext([
-    (_pane, done) => done({ languages: ["en"], confirmed: true }),
-    (pane) => {
-      assert.ok(pane instanceof RecommendedModelPicker);
-      pane.handleInput("\r");
-      pane.handleInput("\x1b");
-    },
-    (_pane, done) => done(undefined),
-  ]);
-  const configured = await runOnboarding(script.ctx, undefined, { transcribe_file: "codemode" });
+  cacheCatalogModel(cache, CATALOG_MODELS.find((model) => model.id === "parakeet-unified-en-0.6b")!);
+  const script = scriptedContext([(pane) => {
+    assert.ok(pane instanceof CatalogModelPicker);
+    pane.handleInput("\r");
+    pane.handleInput("\x1b");
+  }]);
+  const configured = await runModelSelection(script.ctx, {
+    preferredLanguages: ["en"],
+    toolExposure: { transcribe_file: "codemode" },
+    postActivation: "stay",
+  });
   script.assertFinished();
   assert.deepEqual(configured?.toolExposure, { transcribe_file: "codemode" });
   assert.deepEqual((await readSettings()).settings?.toolExposure, { transcribe_file: "codemode" });

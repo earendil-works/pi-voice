@@ -14,6 +14,7 @@ import { readRegistrationSettings } from "../src/startup-shortcut.js";
 
 const MODEL = "parakeet-unified-en-0.6b";
 const CODEMODE = { transcribe_file: "codemode" } as const;
+const DEFAULTS = { shortcut: DEFAULT_SHORTCUT, invalidToolExposure: false };
 
 async function isolatedSettings(t: TestContext): Promise<string> {
   const previous = process.env.PI_CODING_AGENT_DIR;
@@ -27,18 +28,13 @@ async function isolatedSettings(t: TestContext): Promise<string> {
   return directory;
 }
 
-test("settingsForModel carries toolExposure only when set", () => {
-  assert.deepEqual(
-    settingsForModel(MODEL, "/tmp/model", { toolExposure: CODEMODE }).toolExposure,
-    CODEMODE,
-  );
-  assert.equal("toolExposure" in settingsForModel(MODEL, "/tmp/model"), false);
-});
-
-test("a hand-edited opt-in is read back", async (t) => {
+test("a hand-edited opt-in survives a preference edit and a save", async (t) => {
   const directory = await isolatedSettings(t);
   const file = { ...settingsForModel(MODEL, "/tmp/model"), toolExposure: CODEMODE };
   await writeFile(join(directory, "pi-voice.json"), JSON.stringify(file), "utf8");
+  const { settings } = await readSettings();
+  assert.ok(settings);
+  await writeSettings(settingsWithPreferredLanguages(settings, ["en", "es"]));
   assert.deepEqual((await readSettings()).settings?.toolExposure, CODEMODE);
 });
 
@@ -52,19 +48,6 @@ test("an invalid toolExposure is dropped without invalidating the settings", asy
   assert.equal("toolExposure" in settings, false);
 });
 
-test("the opt-in survives a preference edit and a save", async (t) => {
-  const directory = await isolatedSettings(t);
-  const current = settingsForModel(MODEL, "/tmp/model", { toolExposure: CODEMODE });
-  const edited = settingsWithPreferredLanguages(current, ["en", "es"]);
-  assert.deepEqual(edited.toolExposure, CODEMODE);
-  await writeSettings(edited);
-  assert.deepEqual((await readSettings()).settings?.toolExposure, CODEMODE);
-  const onDisk = JSON.parse(await readFile(join(directory, "pi-voice.json"), "utf8")) as {
-    toolExposure?: unknown;
-  };
-  assert.deepEqual(onDisk.toolExposure, CODEMODE);
-});
-
 test("default settings files do not gain a toolExposure key", async (t) => {
   const directory = await isolatedSettings(t);
   await writeSettings(settingsForModel(MODEL, "/tmp/model"));
@@ -72,40 +55,19 @@ test("default settings files do not gain a toolExposure key", async (t) => {
   assert.equal("toolExposure" in onDisk, false);
 });
 
-test("the registration reader returns the opt-in from a configured file", async (t) => {
-  const directory = await isolatedSettings(t);
-  const file = { ...settingsForModel(MODEL, "/tmp/model", { shortcut: "ctrl+alt+x" }), toolExposure: CODEMODE };
-  await writeFile(join(directory, "pi-voice.json"), JSON.stringify(file), "utf8");
-  assert.deepEqual(readRegistrationSettings(), {
-    shortcut: "ctrl+alt+x",
-    toolExposure: CODEMODE,
-    invalidToolExposure: false,
-  });
-});
-
 test("the registration reader ignores the opt-in in an unconfigured file", async (t) => {
   const directory = await isolatedSettings(t);
-  await writeFile(join(directory, "pi-voice.json"), JSON.stringify({ toolExposure: CODEMODE }), "utf8");
-  assert.deepEqual(readRegistrationSettings(), {
-    shortcut: DEFAULT_SHORTCUT,
-    invalidToolExposure: false,
-  });
+  await writeFile(
+    join(directory, "pi-voice.json"),
+    JSON.stringify({ shortcut: "ctrl+alt+x", toolExposure: CODEMODE }),
+    "utf8",
+  );
+  assert.deepEqual(readRegistrationSettings(), DEFAULTS);
 });
 
-test("the registration reader flags an invalid opt-in", async (t) => {
+test("the registration reader falls back to defaults for a missing or malformed file", async (t) => {
   const directory = await isolatedSettings(t);
-  const file = { ...settingsForModel(MODEL, "/tmp/model"), toolExposure: { transcribe_file: "deferred" } };
-  await writeFile(join(directory, "pi-voice.json"), JSON.stringify(file), "utf8");
-  const result = readRegistrationSettings();
-  assert.equal(result.toolExposure, undefined);
-  assert.equal(result.invalidToolExposure, true);
-});
-
-test("the registration reader survives malformed JSON", async (t) => {
-  const directory = await isolatedSettings(t);
+  assert.deepEqual(readRegistrationSettings(), DEFAULTS);
   await writeFile(join(directory, "pi-voice.json"), "{ not json", "utf8");
-  assert.deepEqual(readRegistrationSettings(), {
-    shortcut: DEFAULT_SHORTCUT,
-    invalidToolExposure: false,
-  });
+  assert.deepEqual(readRegistrationSettings(), DEFAULTS);
 });
