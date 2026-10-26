@@ -60,9 +60,7 @@ const UPSTREAM_PROMPT_GUIDELINES = [
   "If transcribe_file reports that FFmpeg is unavailable, explain the installation guidance and ask the user before running a system package-manager command.",
 ];
 
-type HostMetadata = "deferred" | "no-exposure" | "direct" | "missing";
-
-function fakeHost(t: TestContext, toolExposure: unknown, metadata: HostMetadata = "deferred") {
+function fakeHost(t: TestContext, toolExposure: unknown) {
   const previousDir = process.env.PI_CODING_AGENT_DIR;
   const previousDebug = process.env.PI_VOICE_DEBUG;
   const directory = mkdtempSync(join(tmpdir(), "pi-voice-registration-test-"));
@@ -86,8 +84,7 @@ function fakeHost(t: TestContext, toolExposure: unknown, metadata: HostMetadata 
   let shortcut: unknown;
   const commands: string[] = [];
   const startHandlers: Array<(event: unknown, ctx: unknown) => unknown> = [];
-  let active = ["read", "transcribe_file", "bash"];
-  let setCalls = 0;
+  let setActiveToolsCalls = 0;
   const pi = {
     on(event: string, handler: (event: unknown, ctx: unknown) => unknown) {
       if (event === "session_start") startHandlers.push(handler);
@@ -96,13 +93,8 @@ function fakeHost(t: TestContext, toolExposure: unknown, metadata: HostMetadata 
     registerShortcut(key: unknown) { shortcut = key; },
     registerCommand(name: string) { commands.push(name); },
     getCommands: () => [],
-    getAllTools() {
-      if (metadata === "missing" || !tool) return [];
-      if (metadata === "no-exposure") return [{ name: tool.name }];
-      return [{ name: tool.name, exposure: metadata === "direct" ? "direct" : tool.exposure }];
-    },
-    getActiveTools: () => [...active],
-    setActiveTools(names: string[]) { active = [...names]; setCalls++; },
+    getActiveTools: () => ["read", "transcribe_file"],
+    setActiveTools() { setActiveToolsCalls++; },
   } as unknown as ExtensionAPI;
 
   piVoice(pi);
@@ -111,8 +103,7 @@ function fakeHost(t: TestContext, toolExposure: unknown, metadata: HostMetadata 
     tool: () => tool!,
     shortcut: () => shortcut,
     commands,
-    active: () => active,
-    setCalls: () => setCalls,
+    setActiveToolsCalls: () => setActiveToolsCalls,
     start: async () => { for (const handler of startHandlers) await handler({}, ctx); },
     warnings: () => {
       try {
@@ -147,38 +138,8 @@ test("registration uses the configured exposure and keeps the upstream prompt te
   }
 });
 
-test("opted in on a capable host, session start removes only transcribe_file", async (t) => {
+test("opted in, session start leaves the active tools to Pi so pending restored tools survive", async (t) => {
   const host = fakeHost(t, { transcribe_file: "deferred" });
   await host.start();
-  assert.deepEqual(host.active(), ["read", "bash"]);
-  await host.start();
-  assert.equal(host.setCalls(), 1, "already inactive: no second change");
-  assert.equal(host.warnings(), 0);
-});
-
-test("opted in on a host that does not report deferred, activation stays and one warning is logged", async (t) => {
-  for (const metadata of ["no-exposure", "direct"] as const) {
-    await t.test(metadata, async (t) => {
-      const host = fakeHost(t, { transcribe_file: "deferred" }, metadata);
-      await host.start();
-      await host.start();
-      assert.deepEqual(host.active(), ["read", "transcribe_file", "bash"]);
-      assert.equal(host.setCalls(), 0);
-      assert.equal(host.warnings(), 1);
-    });
-  }
-});
-
-test("opted in but the tool is not registered with the host: nothing happens", async (t) => {
-  const host = fakeHost(t, { transcribe_file: "deferred" }, "missing");
-  await host.start();
-  assert.equal(host.setCalls(), 0);
-  assert.equal(host.warnings(), 0);
-});
-
-test("opted out, session start never changes the active tools", async (t) => {
-  const host = fakeHost(t, undefined);
-  await host.start();
-  assert.equal(host.setCalls(), 0);
-  assert.equal(host.warnings(), 0);
+  assert.equal(host.setActiveToolsCalls(), 0);
 });

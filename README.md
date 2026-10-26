@@ -76,7 +76,7 @@ To keep `transcribe_file` out of the model's tool list and the `codemode` descri
 "toolExposure": { "transcribe_file": "deferred" }
 ```
 
-Applies on the next start or `/reload`. Scripts find it with `searchTools()` when `codemode` is enabled (`"defaultTools": ["+codemode"]`), and `tool_search` can load it if enabled. Requires Pi 0.99.2 or later; before 0.99.0 the setting is ignored and a warning is logged.
+Applies on the next start or `/reload`. Scripts find it with `searchTools()` when `codemode` is enabled (`"defaultTools": ["+codemode"]`), and `tool_search` can load it if enabled. Requires Pi 0.99.2 or later; older Pi ignores it. Resuming a session started before the change keeps the tool declared in that session.
 
 ## Developing & Building Pi Voice
 

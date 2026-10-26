@@ -11,7 +11,6 @@ import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { Type } from "typebox";
 import { AsyncLimiter } from "./async-limiter.js";
-import { log } from "./log.js";
 import type { TranscribeSettings } from "./settings.js";
 import type { TranscriptionService } from "./transcription-service.js";
 
@@ -65,37 +64,6 @@ async function saveFullTranscript(text: string): Promise<string> {
   return path;
 }
 
-const TOOL_NAME = "transcribe_file";
-
-function findRegisteredTool(pi: ExtensionAPI) {
-  return pi.getAllTools().find((tool) => tool.name === TOOL_NAME);
-}
-
-function hostSupportsDeferredExposure(tool: object): boolean {
-  return "exposure" in tool && tool.exposure === "deferred";
-}
-
-function removeFromActiveTools(pi: ExtensionAPI): void {
-  const active = pi.getActiveTools();
-  if (active.includes(TOOL_NAME)) pi.setActiveTools(active.filter((name) => name !== TOOL_NAME));
-}
-
-function deactivateAfterReloadOrResumeRestoresIt(pi: ExtensionAPI): void {
-  let warnedUnsupportedHost = false;
-  pi.on("session_start", () => {
-    const tool = findRegisteredTool(pi);
-    if (!tool) return;
-    if (hostSupportsDeferredExposure(tool)) {
-      removeFromActiveTools(pi);
-    } else if (!warnedUnsupportedHost) {
-      log.warn(
-        `toolExposure.${TOOL_NAME}=deferred needs Pi >= 0.99.2; this Pi does not support deferred tools, so ${TOOL_NAME} stays a direct tool.`,
-      );
-      warnedUnsupportedHost = true;
-    }
-  });
-}
-
 export function registerFileTranscriptionTool(
   pi: ExtensionAPI,
   options: FileTranscriptionOptions,
@@ -114,9 +82,7 @@ export function registerFileTranscriptionTool(
     return tracked;
   }
 
-  const exposure: "direct" | "deferred" = options.exposure ?? "direct";
-  if (exposure === "deferred") deactivateAfterReloadOrResumeRestoresIt(pi);
-  const exposureMissingFromPi083Types = { exposure };
+  const exposureMissingFromPi083Types = { exposure: options.exposure ?? "direct" };
 
   pi.registerTool({
     ...exposureMissingFromPi083Types,
