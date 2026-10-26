@@ -55,15 +55,21 @@ test("the old debug flag is not a compatibility alias", () => {
 
 type HostMetadata = "deferred-capable" | "no-exposure" | "missing";
 
+const restoresAgentDir = new WeakSet<TestContext>();
+
 function fakeHost(t: TestContext, toolExposure: unknown, metadata: HostMetadata = "deferred-capable") {
-  const previous = process.env.PI_CODING_AGENT_DIR;
+  // One restore per test: several hosts in a test must not restore each other's directories.
+  if (!restoresAgentDir.has(t)) {
+    restoresAgentDir.add(t);
+    const original = process.env.PI_CODING_AGENT_DIR;
+    t.after(() => {
+      if (original === undefined) delete process.env.PI_CODING_AGENT_DIR;
+      else process.env.PI_CODING_AGENT_DIR = original;
+    });
+  }
   const directory = mkdtempSync(join(tmpdir(), "pi-voice-registration-test-"));
   process.env.PI_CODING_AGENT_DIR = directory;
-  t.after(() => {
-    if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
-    else process.env.PI_CODING_AGENT_DIR = previous;
-    rmSync(directory, { recursive: true, force: true });
-  });
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
   if (toolExposure !== undefined) {
     const file = { ...settingsForModel("parakeet-unified-en-0.6b", "/tmp/model"), toolExposure };
     writeFileSync(join(directory, "pi-voice.json"), JSON.stringify(file), "utf8");
@@ -129,6 +135,16 @@ test("transcribe_file exposure follows the toolExposure setting", (t) => {
     assert.deepEqual(tool.promptGuidelines, baseline.promptGuidelines);
     assert.deepEqual(host.commands, ["voice", "voice-settings", "transcribe"]);
   }
+});
+
+test("several hosts in one test restore the original agent directory", async () => {
+  const original = process.env.PI_CODING_AGENT_DIR;
+  await test("multi-host", (t) => {
+    fakeHost(t, undefined);
+    fakeHost(t, { transcribe_file: "codemode" });
+    fakeHost(t, { transcribe_file: "direct" });
+  });
+  assert.equal(process.env.PI_CODING_AGENT_DIR, original);
 });
 
 test("an invalid toolExposure is logged at registration", (t) => {

@@ -268,6 +268,7 @@ export async function changeOnboardingModel(
 export async function runOnboarding(
   ctx: ExtensionContext,
   shortcut = DEFAULT_SHORTCUT,
+  toolExposure?: ToolExposureSetting,
 ): Promise<TranscribeSettings | undefined> {
   if (!requireTui(ctx)) return undefined;
 
@@ -286,7 +287,7 @@ export async function runOnboarding(
     // the real wait on this machine.
     const picks = recommendModels(CATALOG_MODELS, languages);
     const { activate, waitForCommits } = createSettingsActivation(
-      () => ({ shortcut, preferredLanguages: languages }),
+      () => ({ shortcut, preferredLanguages: languages, toolExposure }),
       (settings) => {
         configured = settings;
       },

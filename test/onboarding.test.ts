@@ -235,6 +235,28 @@ test("exiting first-run languages after a committed selection preserves saved se
   assert.deepEqual((await readSettings()).settings, configured);
 });
 
+test("replaying onboarding keeps an existing toolExposure opt-in", async (t) => {
+  isolatedSettings(t);
+  const cache = isolatedModelCache(t);
+  cacheCatalogModel(cache, LANGUAGE_DETECTION_MODEL);
+  for (const pick of recommendModels(CATALOG_MODELS, ["en"])) {
+    cacheCatalogModel(cache, pick.model);
+  }
+  const script = scriptedContext([
+    (_pane, done) => done({ languages: ["en"], confirmed: true }),
+    (pane) => {
+      assert.ok(pane instanceof RecommendedModelPicker);
+      pane.handleInput("\r");
+      pane.handleInput("\x1b");
+    },
+    (_pane, done) => done(undefined),
+  ]);
+  const configured = await runOnboarding(script.ctx, undefined, { transcribe_file: "codemode" });
+  script.assertFinished();
+  assert.deepEqual(configured?.toolExposure, { transcribe_file: "codemode" });
+  assert.deepEqual((await readSettings()).settings?.toolExposure, { transcribe_file: "codemode" });
+});
+
 test("Escape from the initial recommendation still goes back to languages", async () => {
   const script = scriptedContext([
     (_pane, done) => done({ languages: ["en"], confirmed: true }),

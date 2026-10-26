@@ -490,6 +490,7 @@ export function createPiVoiceRuntime(
       const configured = await runOnboarding(
         ctx,
         settings?.shortcut ?? registeredShortcut,
+        settings?.toolExposure,
       );
       if (!configured) return;
       rememberSettings(configured);
