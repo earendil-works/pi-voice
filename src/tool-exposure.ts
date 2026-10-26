@@ -1,4 +1,4 @@
-export type TranscribeFileExposure = "direct" | "codemode";
+export type TranscribeFileExposure = "direct" | "deferred";
 export type ToolExposureSetting = { transcribe_file: TranscribeFileExposure };
 
 export function parseToolExposure(value: unknown): {
@@ -9,12 +9,8 @@ export function parseToolExposure(value: unknown): {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return { invalid: true };
   const keys = Object.keys(value);
   const exposure = (value as Record<string, unknown>).transcribe_file;
-  if (keys.length !== 1 || (exposure !== "direct" && exposure !== "codemode")) {
+  if (keys.length !== 1 || (exposure !== "direct" && exposure !== "deferred")) {
     return { invalid: true };
   }
   return { setting: { transcribe_file: exposure }, invalid: false };
-}
-
-export function toToolExposure(setting: ToolExposureSetting | undefined): "direct" | "deferred" {
-  return setting?.transcribe_file === "codemode" ? "deferred" : "direct";
 }

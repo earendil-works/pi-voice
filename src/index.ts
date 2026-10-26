@@ -15,7 +15,6 @@ import { displayShortcut, STATUS_WIDGET_KEY } from "./shortcut-core.js";
 import { initLog, log, logStep, markKeyPress, watchEventLoop } from "./log.js";
 import { legacySettingsPath, logPath, settingsPath } from "./settings-path.js";
 import { readRegistrationSettings } from "./startup-shortcut.js";
-import { toToolExposure } from "./tool-exposure.js";
 
 // Pi awaits extension module evaluation before continuing startup. Keep this
 // entry point registration-only and load feature implementations on first use.
@@ -26,7 +25,7 @@ export default function piVoice(pi: ExtensionAPI): void {
   const registeredShortcut = registration.shortcut;
   if (registration.invalidToolExposure) {
     log.warn(
-      `Ignoring invalid toolExposure in ${settingsPath()}; expected { "transcribe_file": "direct" | "codemode" }.`,
+      `Ignoring invalid toolExposure in ${settingsPath()}; expected { "transcribe_file": "direct" | "deferred" }.`,
     );
   }
   let runtimePromise: Promise<PiVoiceRuntime> | undefined;
@@ -74,7 +73,7 @@ export default function piVoice(pi: ExtensionAPI): void {
   const fileTranscription = registerFileTranscriptionTool(pi, {
     getSettings: async () => (await loadRuntime()).requireConfiguredSettingsForTool(),
     getService: async () => (await loadRuntime()).service,
-    exposure: toToolExposure(registration.toolExposure),
+    exposure: registration.toolExposure?.transcribe_file,
   });
 
   async function toggleCapture(ctx: ExtensionContext): Promise<void> {

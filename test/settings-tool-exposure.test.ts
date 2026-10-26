@@ -13,7 +13,7 @@ import { DEFAULT_SHORTCUT } from "../src/shortcut-core.js";
 import { readRegistrationSettings } from "../src/startup-shortcut.js";
 
 const MODEL = "parakeet-unified-en-0.6b";
-const CODEMODE = { transcribe_file: "codemode" } as const;
+const DEFERRED = { transcribe_file: "deferred" } as const;
 const DEFAULTS = { shortcut: DEFAULT_SHORTCUT, invalidToolExposure: false };
 
 async function isolatedSettings(t: TestContext): Promise<string> {
@@ -30,17 +30,17 @@ async function isolatedSettings(t: TestContext): Promise<string> {
 
 test("a hand-edited opt-in survives a preference edit and a save", async (t) => {
   const directory = await isolatedSettings(t);
-  const file = { ...settingsForModel(MODEL, "/tmp/model"), toolExposure: CODEMODE };
+  const file = { ...settingsForModel(MODEL, "/tmp/model"), toolExposure: DEFERRED };
   await writeFile(join(directory, "pi-voice.json"), JSON.stringify(file), "utf8");
   const { settings } = await readSettings();
   assert.ok(settings);
   await writeSettings(settingsWithPreferredLanguages(settings, ["en", "es"]));
-  assert.deepEqual((await readSettings()).settings?.toolExposure, CODEMODE);
+  assert.deepEqual((await readSettings()).settings?.toolExposure, DEFERRED);
 });
 
 test("an invalid toolExposure is dropped without invalidating the settings", async (t) => {
   const directory = await isolatedSettings(t);
-  const file = { ...settingsForModel(MODEL, "/tmp/model"), toolExposure: { transcribe_file: "deferred" } };
+  const file = { ...settingsForModel(MODEL, "/tmp/model"), toolExposure: { transcribe_file: "codemode" } };
   await writeFile(join(directory, "pi-voice.json"), JSON.stringify(file), "utf8");
   const { settings, warning } = await readSettings();
   assert.equal(warning, undefined);
@@ -59,7 +59,7 @@ test("the registration reader ignores the opt-in in an unconfigured file", async
   const directory = await isolatedSettings(t);
   await writeFile(
     join(directory, "pi-voice.json"),
-    JSON.stringify({ shortcut: "ctrl+alt+x", toolExposure: CODEMODE }),
+    JSON.stringify({ shortcut: "ctrl+alt+x", toolExposure: DEFERRED }),
     "utf8",
   );
   assert.deepEqual(readRegistrationSettings(), DEFAULTS);

@@ -8,14 +8,14 @@ test("absent toolExposure is valid and unset", () => {
 
 test("rejects other values, keys and shapes", () => {
   for (const value of [
-    { transcribe_file: "deferred" },
-    { transcribe_file: "Codemode" },
-    "codemode",
+    { transcribe_file: "codemode" },
+    { transcribe_file: "Deferred" },
+    "deferred",
     [],
     null,
     {},
-    { other: "codemode" },
-    { transcribe_file: "codemode", other: "direct" },
+    { other: "deferred" },
+    { transcribe_file: "deferred", other: "direct" },
   ]) {
     assert.deepEqual(parseToolExposure(value), { invalid: true }, JSON.stringify(value));
   }

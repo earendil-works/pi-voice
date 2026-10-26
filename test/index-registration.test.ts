@@ -126,12 +126,12 @@ function fakeHost(t: TestContext, toolExposure: unknown, metadata: HostMetadata 
   };
 }
 
-test("registration maps codemode to deferred like Pi's MCP support and keeps the upstream prompt text", async (t) => {
+test("registration uses the configured exposure and keeps the upstream prompt text", async (t) => {
   const cases: Array<[unknown, string, number]> = [
     [undefined, "direct", 0],
     [{ transcribe_file: "direct" }, "direct", 0],
-    [{ transcribe_file: "codemode" }, "deferred", 0],
-    [{ transcribe_file: "deferred" }, "direct", 1],
+    [{ transcribe_file: "deferred" }, "deferred", 0],
+    [{ transcribe_file: "codemode" }, "direct", 1],
   ];
   for (const [setting, exposure, warnings] of cases) {
     await t.test(JSON.stringify(setting) ?? "no settings file", (t) => {
@@ -148,7 +148,7 @@ test("registration maps codemode to deferred like Pi's MCP support and keeps the
 });
 
 test("opted in on a capable host, session start removes only transcribe_file", async (t) => {
-  const host = fakeHost(t, { transcribe_file: "codemode" });
+  const host = fakeHost(t, { transcribe_file: "deferred" });
   await host.start();
   assert.deepEqual(host.active(), ["read", "bash"]);
   await host.start();
@@ -159,7 +159,7 @@ test("opted in on a capable host, session start removes only transcribe_file", a
 test("opted in on a host that does not report deferred, activation stays and one warning is logged", async (t) => {
   for (const metadata of ["no-exposure", "direct"] as const) {
     await t.test(metadata, async (t) => {
-      const host = fakeHost(t, { transcribe_file: "codemode" }, metadata);
+      const host = fakeHost(t, { transcribe_file: "deferred" }, metadata);
       await host.start();
       await host.start();
       assert.deepEqual(host.active(), ["read", "transcribe_file", "bash"]);
@@ -170,7 +170,7 @@ test("opted in on a host that does not report deferred, activation stays and one
 });
 
 test("opted in but the tool is not registered with the host: nothing happens", async (t) => {
-  const host = fakeHost(t, { transcribe_file: "codemode" }, "missing");
+  const host = fakeHost(t, { transcribe_file: "deferred" }, "missing");
   await host.start();
   assert.equal(host.setCalls(), 0);
   assert.equal(host.warnings(), 0);

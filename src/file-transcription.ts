@@ -89,7 +89,7 @@ function deactivateAfterReloadOrResumeRestoresIt(pi: ExtensionAPI): void {
       removeFromActiveTools(pi);
     } else if (!warnedUnsupportedHost) {
       log.warn(
-        `toolExposure.${TOOL_NAME}=codemode needs Pi >= 0.99.2; this Pi does not support deferred tools, so ${TOOL_NAME} stays a direct tool.`,
+        `toolExposure.${TOOL_NAME}=deferred needs Pi >= 0.99.2; this Pi does not support deferred tools, so ${TOOL_NAME} stays a direct tool.`,
       );
       warnedUnsupportedHost = true;
     }
