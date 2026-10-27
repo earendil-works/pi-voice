@@ -68,6 +68,16 @@ The legacy `PI_TRANSCRIBE_FFMPEG_PATH` variable remains supported when `PI_VOICE
 
 When FFmpeg is unavailable, `transcribe_file` reports platform-specific guidance to the agent. The agent should ask before running a package-manager command. Model setup is still explicit: run `/voice-settings` once in the interactive TUI to choose and, after confirmation, download a local model.
 
+### Keeping `transcribe_file` out of the context
+
+To keep `transcribe_file` out of the model's tool list and the `codemode` description while leaving it discoverable and callable, set `transcribeFileExposure` in `~/.pi/agent/pi-voice.json` from `"direct"` to `"deferred"` once `/voice-settings` has run (add the key if the file predates it):
+
+```json
+"transcribeFileExposure": "deferred"
+```
+
+Applies on the next start or `/reload`. Scripts find it with `searchTools()` when `codemode` is enabled (`"defaultTools": ["+codemode"]`), and `tool_search` can load it if enabled. Requires Pi 0.99.2 or later; older Pi ignores it. Resuming a session started before the change keeps the tool declared in that session.
+
 ## Developing & Building Pi Voice
 
 To develop or run it from a checkout:

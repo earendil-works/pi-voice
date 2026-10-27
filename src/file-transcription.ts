@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { Type } from "typebox";
 import { AsyncLimiter } from "./async-limiter.js";
-import type { TranscribeSettings } from "./settings.js";
+import type { TranscribeFileExposure, TranscribeSettings } from "./settings.js";
 import type { TranscriptionService } from "./transcription-service.js";
 
 const CONTEXT_LINE_LENGTH = 1_000;
@@ -30,6 +30,7 @@ type FileTranscriptionDetails = {
 type FileTranscriptionOptions = {
   getSettings: () => Promise<TranscribeSettings>;
   getService: () => Promise<TranscriptionService>;
+  exposure: TranscribeFileExposure;
 };
 
 export type FileTranscriptionController = {
@@ -82,6 +83,7 @@ export function registerFileTranscriptionTool(
   }
 
   pi.registerTool({
+    exposure: options.exposure,
     name: "transcribe_file",
     label: "Transcribe File",
     description: `Transcribe speech from a local audio or video file using Pi Voice's configured local model. Requires the ffmpeg executable on PATH (or PI_VOICE_FFMPEG_PATH). Output is truncated to ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)}; a complete transcript is saved to a temporary file when needed.`,

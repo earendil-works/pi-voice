@@ -23,6 +23,7 @@ import {
   writeSettings,
   type ChineseOutput,
   type MicrophoneSetting,
+  type TranscribeFileExposure,
   type TranscribeSettings,
   type TranscriptionLanguage,
 } from "./settings.js";
@@ -57,6 +58,7 @@ type ModelSelectionOptions = {
   microphone?: MicrophoneSetting;
   voiceActivityDetection?: boolean;
   longformChunking?: boolean;
+  transcribeFileExposure?: TranscribeFileExposure;
   /** Persists language changes made before this flow activates a model. */
   onPreferredLanguagesChange?: (languages: string[]) => Promise<void>;
   postActivation?: CatalogModelPostActivation;
@@ -83,6 +85,7 @@ export async function runModelSelection(
       microphone: configured?.microphone ?? options.microphone ?? DEFAULT_MICROPHONE,
       voiceActivityDetection: configured?.voiceActivityDetection ?? options.voiceActivityDetection,
       longformChunking: configured?.longformChunking ?? options.longformChunking,
+      transcribeFileExposure: configured?.transcribeFileExposure ?? options.transcribeFileExposure,
     }),
     (settings) => {
       configured = settings;
@@ -213,6 +216,7 @@ export async function changeOnboardingModel(
       chineseOutput: current.chineseOutput,
       voiceActivityDetection: current.voiceActivityDetection,
       longformChunking: current.longformChunking,
+      transcribeFileExposure: current.transcribeFileExposure,
     }),
     (settings) => {
       chosen = settings;
@@ -263,6 +267,7 @@ export async function changeOnboardingModel(
 export async function runOnboarding(
   ctx: ExtensionContext,
   shortcut: string,
+  transcribeFileExposure?: TranscribeFileExposure,
 ): Promise<TranscribeSettings | undefined> {
   if (!requireTui(ctx)) return undefined;
 
@@ -281,7 +286,7 @@ export async function runOnboarding(
     // the real wait on this machine.
     const picks = recommendModels(CATALOG_MODELS, languages);
     const { activate, waitForCommits } = createSettingsActivation(
-      () => ({ shortcut, preferredLanguages: languages }),
+      () => ({ shortcut, preferredLanguages: languages, transcribeFileExposure }),
       (settings) => {
         configured = settings;
       },

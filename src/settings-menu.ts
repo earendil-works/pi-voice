@@ -352,6 +352,7 @@ export async function showSettingsMenu(
         microphone: configured.microphone,
         voiceActivityDetection: configured.voiceActivityDetection,
         longformChunking: configured.longformChunking,
+        transcribeFileExposure: configured.transcribeFileExposure,
         postActivation: "stay",
         onPreferredLanguagesChange: async (preferredLanguages) => {
           if (languagesEqual(preferredLanguages, configured.preferredLanguages)) return;
