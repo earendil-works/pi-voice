@@ -149,7 +149,7 @@ export function createPiVoiceRuntime(
       microphone: previous.microphone,
       voiceActivityDetection: previous.voiceActivityDetection,
       longformChunking: previous.longformChunking,
-      toolExposure: previous.toolExposure,
+      transcribeFileExposure: previous.transcribeFileExposure,
       postActivation: "advance",
     });
     if (configured) rememberSettings(configured);
@@ -490,7 +490,7 @@ export function createPiVoiceRuntime(
       const configured = await runOnboarding(
         ctx,
         settings?.shortcut ?? registeredShortcut,
-        settings?.toolExposure,
+        settings?.transcribeFileExposure,
       );
       if (!configured) return;
       rememberSettings(configured);

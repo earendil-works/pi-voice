@@ -63,7 +63,7 @@ function initialSettings(languages = ["en"]) {
     microphone: { type: "device", name: "Test microphone", occurrence: 1 },
     chineseOutput: "traditional-taiwan",
     longformChunking: false,
-    toolExposure: { transcribe_file: "deferred" },
+    transcribeFileExposure: "deferred",
   });
 }
 
@@ -116,7 +116,7 @@ for (const entry of ["recommended", "other-models", "single-pick"] as const) {
     assert.deepEqual(result.microphone, current.microphone);
     assert.equal(result.chineseOutput, current.chineseOutput);
     assert.equal(result.longformChunking, false, "the hidden setting survives a model change");
-    assert.deepEqual(result.toolExposure, { transcribe_file: "deferred" }, "the opt-in survives a model change");
+    assert.equal(result.transcribeFileExposure, "deferred", "the opt-in survives a model change");
     assert.deepEqual((await readSettings()).settings, result);
 
     // A later visit uses the newly saved languages, not the first-run closure.
@@ -213,8 +213,8 @@ test("back after confirming new languages leaves settings unchanged until a mode
 });
 
 test("exiting first-run languages after a committed selection preserves saved settings", async (t) => {
-  for (const toolExposure of [undefined, { transcribe_file: "deferred" } as const]) {
-    await t.test(toolExposure ? "replay keeps the toolExposure opt-in" : "first run", async (t) => {
+  for (const transcribeFileExposure of ["direct", "deferred"] as const) {
+    await t.test(`keeps transcribeFileExposure ${transcribeFileExposure}`, async (t) => {
       isolatedSettings(t);
       const cache = isolatedModelCache(t);
       cacheCatalogModel(cache, LANGUAGE_DETECTION_MODEL);
@@ -231,16 +231,16 @@ test("exiting first-run languages after a committed selection preserves saved se
         },
         (_pane, done) => done(undefined),
       ]);
-      const configured = await runOnboarding(script.ctx, undefined, toolExposure);
+      const configured = await runOnboarding(script.ctx, undefined, transcribeFileExposure);
       script.assertFinished();
       assert.ok(configured);
-      assert.deepEqual(configured.toolExposure, toolExposure);
+      assert.equal(configured.transcribeFileExposure, transcribeFileExposure);
       assert.deepEqual((await readSettings()).settings, configured);
     });
   }
 });
 
-test("a /voice-settings model change keeps the toolExposure opt-in", async (t) => {
+test("a /voice-settings model change keeps the transcribeFileExposure opt-in", async (t) => {
   isolatedSettings(t);
   const cache = isolatedModelCache(t);
   cacheCatalogModel(cache, LANGUAGE_DETECTION_MODEL);
@@ -252,12 +252,12 @@ test("a /voice-settings model change keeps the toolExposure opt-in", async (t) =
   }]);
   const configured = await runModelSelection(script.ctx, {
     preferredLanguages: ["en"],
-    toolExposure: { transcribe_file: "deferred" },
+    transcribeFileExposure: "deferred",
     postActivation: "stay",
   });
   script.assertFinished();
-  assert.deepEqual(configured?.toolExposure, { transcribe_file: "deferred" });
-  assert.deepEqual((await readSettings()).settings?.toolExposure, { transcribe_file: "deferred" });
+  assert.equal(configured?.transcribeFileExposure, "deferred");
+  assert.equal((await readSettings()).settings?.transcribeFileExposure, "deferred");
 });
 
 test("Escape from the initial recommendation still goes back to languages", async () => {

@@ -22,6 +22,7 @@ function settings(modelPath: string, modelId = "nemotron-3.5-asr-streaming-0.6b"
     microphone: { type: "system-default" },
     voiceActivityDetection: true,
     longformChunking: true,
+    transcribeFileExposure: "direct",
     model: { source: "catalog", id: modelId, path: modelPath },
   };
 }

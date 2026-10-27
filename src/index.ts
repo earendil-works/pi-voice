@@ -23,11 +23,6 @@ export default function piVoice(pi: ExtensionAPI): void {
   initLog({ path: logPath(), level: process.env.PI_VOICE_DEBUG === "1" ? "debug" : "info" });
   const registration = readRegistrationSettings();
   const registeredShortcut = registration.shortcut;
-  if (registration.invalidToolExposure) {
-    log.warn(
-      `Ignoring invalid toolExposure in ${settingsPath()}; expected { "transcribe_file": "direct" | "deferred" }.`,
-    );
-  }
   let runtimePromise: Promise<PiVoiceRuntime> | undefined;
   let shuttingDown = false;
 
@@ -73,7 +68,7 @@ export default function piVoice(pi: ExtensionAPI): void {
   const fileTranscription = registerFileTranscriptionTool(pi, {
     getSettings: async () => (await loadRuntime()).requireConfiguredSettingsForTool(),
     getService: async () => (await loadRuntime()).service,
-    exposure: registration.toolExposure?.transcribe_file,
+    exposure: registration.transcribeFileExposure,
   });
 
   async function toggleCapture(ctx: ExtensionContext): Promise<void> {

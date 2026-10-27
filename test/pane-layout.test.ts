@@ -29,6 +29,7 @@ const settings: TranscribeSettings = {
   microphone: { type: "system-default" },
   voiceActivityDetection: true,
   longformChunking: true,
+  transcribeFileExposure: "direct",
   model: {
     source: "catalog",
     id: "parakeet-unified-en-0.6b",
