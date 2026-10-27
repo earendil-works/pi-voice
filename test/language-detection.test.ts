@@ -11,6 +11,7 @@ import { cacheCatalogModel, isolatedModelCache } from "./model-cache-helper.js";
 
 // Multilingual without native detection, so Auto relies on the shared detector.
 const settings = settingsForModel("canary-180m-flash", "/mock/canary.gguf", {
+  shortcut: "ctrl+alt+z",
   preferredLanguages: ["en", "de"],
   transcriptionLanguage: "auto",
 });
@@ -102,6 +103,7 @@ test("Auto gives way to a fixed language once the preferences can't support it",
   const fun = CATALOG_MODELS.find((model) => model.id === "Fun-ASR-MLT-Nano-2512")!;
   assert.equal(fun.capabilities.languageDetection, false);
   const funAuto = settingsForModel(fun.id, "/mock/fun.gguf", {
+    shortcut: "ctrl+alt+z",
     preferredLanguages: ["zh", "en"],
     transcriptionLanguage: "auto",
   });

@@ -9,11 +9,8 @@ import {
   type KeybindingsManager,
   type TUI,
 } from "@earendil-works/pi-tui";
-import {
-  DEFAULT_SHORTCUT,
-  displayShortcut,
-  normalizeShortcut,
-} from "./shortcut-core.js";
+import { defaultShortcut } from "./default-shortcut.js";
+import { displayShortcut, normalizeShortcut } from "./shortcut-core.js";
 import { VoiceKeys } from "./keybindings.js";
 import { panelBorder } from "./ui-components.js";
 
@@ -48,6 +45,7 @@ export function createShortcutPicker(
   done: (shortcut: string | undefined) => void,
 ): Component {
   const keys = new VoiceKeys(keybindings);
+  const defaultKey = defaultShortcut();
   let phase: Phase = { kind: "waiting" };
   const container = new Container();
 
@@ -98,7 +96,7 @@ export function createShortcutPicker(
       container.addChild(new Spacer(1));
       container.addChild(
         new Text(
-          `${keys.hint("voice.shortcut.useDefault", `default (${displayShortcut(DEFAULT_SHORTCUT)})`)}  ${keys.hint("tui.select.cancel", "back")}`,
+          `${keys.hint("voice.shortcut.useDefault", `default (${displayShortcut(defaultKey)})`)}  ${keys.hint("tui.select.cancel", "back")}`,
           1,
           0,
         ),
@@ -132,8 +130,8 @@ export function createShortcutPicker(
       if (keys.matches(data, "voice.shortcut.useDefault")) {
         phase = {
           kind: "preview",
-          normalized: DEFAULT_SHORTCUT,
-          conflicts: findConflicts(keybindings, DEFAULT_SHORTCUT),
+          normalized: defaultKey,
+          conflicts: findConflicts(keybindings, defaultKey),
         };
         rebuild();
         tui.requestRender();
