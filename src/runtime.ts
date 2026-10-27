@@ -158,11 +158,7 @@ export function createPiVoiceRuntime(
     return configured;
   }
 
-  /**
-   * Returns saved settings, running setup first when there are none or the
-   * model file is gone. `setUp` reports that setup ran and finished; the
-   * caller shows Ready, because only it knows whether a reload follows.
-   */
+  // `setUp`: setup ran and finished; the caller shows Ready since only it knows if a reload follows.
   async function ensureSettings(
     ctx: ExtensionContext,
   ): Promise<{ configured?: TranscribeSettings; setUp: boolean; completedFirstRun: boolean }> {
@@ -484,20 +480,14 @@ export function createPiVoiceRuntime(
     if (reload) await reloadForShortcut(ctx, readyShortcut);
   }
 
-  /**
-   * Reloads so Pi binds a newly saved shortcut. The reload clears widgets, so
-   * Ready for just-finished setup is left to the instance that starts next.
-   */
+  // Reload clears widgets, so Ready after setup is shown by the next instance.
   async function reloadForShortcut(
     ctx: ExtensionCommandContext,
     readyShortcut: string | undefined,
   ): Promise<void> {
     if (readyShortcut) requestReadyAfterReload();
     await ctx.reload();
-    // An unclaimed request means no instance started. Pi declines to reload
-    // mid-response, leaving this one live and its ctx usable, so it shows Ready
-    // with the /reload hint. A reload that failed after shutting this instance
-    // down has made ctx stale and reports its own error.
+    // Unclaimed means Pi declined the reload (e.g. mid-response): show Ready with the /reload hint.
     if (takeReadyRequest() && readyShortcut && !shuttingDown) {
       await notifyReady(ctx, readyShortcut);
     }
@@ -523,9 +513,7 @@ export function createPiVoiceRuntime(
       );
       if (!configured) return;
       rememberSettings(configured);
-      // End on the same Ready state as first-run setup, including the reload a
-      // new shortcut needs. A replay should expose the complete user flow
-      // rather than a debug-only completion message.
+      // End like first-run setup: Ready, reloading first if the shortcut changed.
       if (configured.shortcut === registeredShortcut) await notifyReady(ctx, configured.shortcut);
       else readyShortcut = configured.shortcut;
     });
