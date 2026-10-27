@@ -10,6 +10,7 @@ import {
   findLegacyGitInstall,
   legacyGitMigrationMessage,
 } from "./install-migration.js";
+import { takeReadyRequest } from "./ready-handoff.js";
 import type { PiVoiceRuntime } from "./runtime.js";
 import { displayShortcut, STATUS_WIDGET_KEY } from "./shortcut-core.js";
 import { initLog, log, logStep, markKeyPress, watchEventLoop } from "./log.js";
@@ -43,6 +44,12 @@ export default function piVoice(pi: ExtensionAPI): void {
   }
 
   pi.on("session_start", async (_event, ctx) => {
+    // Setup that saved a new shortcut reloaded to bind it; finish it here.
+    if (takeReadyRequest()) {
+      await (await loadRuntime()).showReadyAfterReload(ctx);
+      return;
+    }
+
     let showedMigrationNotice = false;
     if (ctx.mode === "tui") {
       const legacyInstall = findLegacyGitInstall(pi.getCommands());
