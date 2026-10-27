@@ -148,6 +148,7 @@ test("a failed chunk fails the whole transcript", async () => {
 });
 
 const canary = settingsForModel("canary-1b-v2", "/mock/canary.gguf", {
+  shortcut: "ctrl+alt+z",
   preferredLanguages: ["en"],
   transcriptionLanguage: "en",
 });

@@ -144,6 +144,7 @@ test("a root catalog stays root when another cached model appears while it is op
     },
   ]);
   assert.equal(await runModelSelection(script.ctx, {
+    shortcut: "ctrl+alt+z",
     preferredLanguages: ["en"],
     currentModelId: current.id,
     postActivation: "stay",
@@ -227,7 +228,7 @@ test("exiting first-run languages after a committed selection preserves saved se
     },
     (_pane, done) => done(undefined),
   ]);
-  const configured = await runOnboarding(script.ctx);
+  const configured = await runOnboarding(script.ctx, "ctrl+alt+z");
   script.assertFinished();
   assert.ok(configured);
   assert.deepEqual((await readSettings()).settings, configured);
@@ -245,7 +246,7 @@ test("Escape from the initial recommendation still goes back to languages", asyn
       done(undefined);
     },
   ]);
-  assert.equal(await runOnboarding(script.ctx), undefined);
+  assert.equal(await runOnboarding(script.ctx, "ctrl+alt+z"), undefined);
   script.assertFinished();
 });
 

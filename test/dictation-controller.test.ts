@@ -7,7 +7,7 @@ import { TranscriptionService } from "../src/transcription-service.js";
 import { FakeMicrophone, fakeDictationService } from "./dictation-helper.js";
 import { nextTurn } from "./helpers.js";
 
-const settings = settingsForModel("parakeet-unified-en-0.6b", "/tmp/test-model");
+const settings = settingsForModel("parakeet-unified-en-0.6b", "/tmp/test-model", { shortcut: "ctrl+alt+z" });
 
 function harness() {
   const service = fakeDictationService();

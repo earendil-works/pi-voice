@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import { DEFAULT_SHORTCUT, normalizeShortcut } from "./shortcut-core.js";
+import { defaultShortcut } from "./default-shortcut.js";
+import { normalizeShortcut } from "./shortcut-core.js";
 import { legacySettingsPath, settingsPath } from "./settings-path.js";
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -12,13 +13,13 @@ export function readShortcutForRegistration(): string {
     try {
       const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
       if (!isObject(parsed) || parsed.version !== 1 || typeof parsed.shortcut !== "string") {
-        return DEFAULT_SHORTCUT;
+        return defaultShortcut();
       }
-      return normalizeShortcut(parsed.shortcut) ?? DEFAULT_SHORTCUT;
+      return normalizeShortcut(parsed.shortcut) ?? defaultShortcut();
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
-      return DEFAULT_SHORTCUT;
+      return defaultShortcut();
     }
   }
-  return DEFAULT_SHORTCUT;
+  return defaultShortcut();
 }
