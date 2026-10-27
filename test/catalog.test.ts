@@ -28,7 +28,7 @@ test("an unknown saved model requests reconfiguration without rewriting settings
     await rm(directory, { recursive: true, force: true });
   });
 
-  const current = settingsForModel("parakeet-unified-en-0.6b", "/tmp/model");
+  const current = settingsForModel("parakeet-unified-en-0.6b", "/tmp/model", { shortcut: "ctrl+alt+z" });
   const saved = { ...current, model: { ...current.model, id: "retired-model" } };
   await writeSettings(saved);
 
@@ -85,7 +85,7 @@ test("legacy settings still load when migration cannot write", { skip: cannotRev
     await rm(directory, { recursive: true, force: true });
   });
 
-  const legacy = settingsForModel("parakeet-unified-en-0.6b", "/tmp/model");
+  const legacy = settingsForModel("parakeet-unified-en-0.6b", "/tmp/model", { shortcut: "ctrl+alt+z" });
   const legacyPath = join(directory, "pi-transcribe.json");
   await writeFile(legacyPath, `${JSON.stringify(legacy, null, 2)}\n`, "utf8");
   await chmod(directory, 0o500);

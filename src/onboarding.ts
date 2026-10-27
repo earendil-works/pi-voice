@@ -27,7 +27,6 @@ import {
   type TranscribeSettings,
   type TranscriptionLanguage,
 } from "./settings.js";
-import { DEFAULT_SHORTCUT } from "./shortcut-core.js";
 
 function requireTui(ctx: ExtensionContext): boolean {
   if (ctx.mode === "tui") return true;
@@ -51,7 +50,7 @@ function createSettingsActivation(
 }
 
 type ModelSelectionOptions = {
-  shortcut?: string;
+  shortcut: string;
   preferredLanguages?: readonly string[];
   transcriptionLanguage?: TranscriptionLanguage;
   chineseOutput?: ChineseOutput;
@@ -67,7 +66,7 @@ type ModelSelectionOptions = {
 
 export async function runModelSelection(
   ctx: ExtensionContext,
-  options: ModelSelectionOptions = {},
+  options: ModelSelectionOptions,
 ): Promise<TranscribeSettings | undefined> {
   if (!requireTui(ctx)) return undefined;
 
@@ -78,7 +77,7 @@ export async function runModelSelection(
   let configured: TranscribeSettings | undefined;
   const { activate, waitForCommits } = createSettingsActivation(
     () => ({
-      shortcut: configured?.shortcut ?? options.shortcut ?? DEFAULT_SHORTCUT,
+      shortcut: configured?.shortcut ?? options.shortcut,
       preferredLanguages,
       transcriptionLanguage:
         configured?.transcriptionLanguage ?? options.transcriptionLanguage,
@@ -267,7 +266,7 @@ export async function changeOnboardingModel(
 
 export async function runOnboarding(
   ctx: ExtensionContext,
-  shortcut = DEFAULT_SHORTCUT,
+  shortcut: string,
   transcribeFileExposure?: TranscribeFileExposure,
 ): Promise<TranscribeSettings | undefined> {
   if (!requireTui(ctx)) return undefined;

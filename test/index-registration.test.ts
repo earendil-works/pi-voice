@@ -63,7 +63,7 @@ function registeredExposure(t: TestContext, transcribeFileExposure: unknown): un
     rmSync(directory, { recursive: true, force: true });
   });
   if (transcribeFileExposure !== undefined) {
-    const file = { ...settingsForModel("parakeet-unified-en-0.6b", "/tmp/model"), transcribeFileExposure };
+    const file = { ...settingsForModel("parakeet-unified-en-0.6b", "/tmp/model", { shortcut: "ctrl+alt+z" }), transcribeFileExposure };
     writeFileSync(join(directory, "pi-voice.json"), JSON.stringify(file), "utf8");
   }
 

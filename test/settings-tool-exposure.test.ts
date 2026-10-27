@@ -9,11 +9,11 @@ import {
   settingsWithPreferredLanguages,
   writeSettings,
 } from "../src/settings.js";
-import { DEFAULT_SHORTCUT } from "../src/shortcut-core.js";
+import { defaultShortcut } from "../src/default-shortcut.js";
 import { readRegistrationSettings } from "../src/startup-shortcut.js";
 
 const MODEL = "parakeet-unified-en-0.6b";
-const DEFAULTS = { shortcut: DEFAULT_SHORTCUT, transcribeFileExposure: "direct" };
+const DEFAULTS = { shortcut: defaultShortcut(), transcribeFileExposure: "direct" };
 
 async function isolatedSettings(t: TestContext): Promise<string> {
   const previous = process.env.PI_CODING_AGENT_DIR;
@@ -29,7 +29,7 @@ async function isolatedSettings(t: TestContext): Promise<string> {
 
 test("a hand-edited opt-in survives a preference edit and a save", async (t) => {
   const directory = await isolatedSettings(t);
-  const file = { ...settingsForModel(MODEL, "/tmp/model"), transcribeFileExposure: "deferred" };
+  const file = { ...settingsForModel(MODEL, "/tmp/model", { shortcut: "ctrl+alt+z" }), transcribeFileExposure: "deferred" };
   await writeFile(join(directory, "pi-voice.json"), JSON.stringify(file), "utf8");
   const { settings } = await readSettings();
   assert.ok(settings);
@@ -39,7 +39,7 @@ test("a hand-edited opt-in survives a preference edit and a save", async (t) => 
 
 test("a missing or invalid transcribeFileExposure reads as direct without invalidating the settings", async (t) => {
   const directory = await isolatedSettings(t);
-  const { transcribeFileExposure: _, ...withoutKey } = settingsForModel(MODEL, "/tmp/model");
+  const { transcribeFileExposure: _, ...withoutKey } = settingsForModel(MODEL, "/tmp/model", { shortcut: "ctrl+alt+z" });
   for (const file of [withoutKey, { ...withoutKey, transcribeFileExposure: "codemode" }]) {
     await writeFile(join(directory, "pi-voice.json"), JSON.stringify(file), "utf8");
     const { settings, warning } = await readSettings();
@@ -50,7 +50,7 @@ test("a missing or invalid transcribeFileExposure reads as direct without invali
 
 test("new settings files write the direct default", async (t) => {
   const directory = await isolatedSettings(t);
-  await writeSettings(settingsForModel(MODEL, "/tmp/model"));
+  await writeSettings(settingsForModel(MODEL, "/tmp/model", { shortcut: "ctrl+alt+z" }));
   const onDisk = JSON.parse(await readFile(join(directory, "pi-voice.json"), "utf8"));
   assert.equal(onDisk.transcribeFileExposure, "direct");
 });
