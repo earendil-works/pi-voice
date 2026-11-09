@@ -34,6 +34,7 @@ export const VOICE_KEYBINDINGS = {
   "voice.shortcut.useDefault": { defaultKeys: "d", description: "Use the default shortcut" },
   "voice.dictation.cancel": { defaultKeys: "escape", description: "Cancel recording or transcription" },
   "voice.dictation.stop": { defaultKeys: "space", description: "Stop recording and transcribe" },
+  "voice.dictation.stopAndSend": { defaultKeys: [], description: "Stop recording, transcribe, and submit the editor" },
 } as const satisfies KeybindingDefinitions;
 
 export type VoiceKeybinding = keyof typeof VOICE_KEYBINDINGS;

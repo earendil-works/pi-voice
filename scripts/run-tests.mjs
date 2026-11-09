@@ -35,7 +35,7 @@ try {
     .filter((name) => name.endsWith(".test.js"))
     .sort()
     .map((name) => join(testDirectory, name));
-  await run(process.execPath, ["--test", ...testFiles]);
+  await run(process.execPath, ["--experimental-test-module-mocks", "--test", ...testFiles]);
 } finally {
   await rm(outputDirectory, { recursive: true, force: true });
 }
