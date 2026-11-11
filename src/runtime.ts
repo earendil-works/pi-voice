@@ -1,4 +1,5 @@
 import {
+  CustomEditor,
   rawKeyHint,
   type ExtensionAPI,
   type ExtensionCommandContext,
@@ -51,6 +52,24 @@ function captureErrorMessage(error: unknown): string {
 function transcriptionErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return `Local transcription failed: ${message}`;
+}
+
+async function submitEditor(ctx: ExtensionContext): Promise<boolean> {
+  if (ctx.mode !== "tui") return false;
+  // Close before mounting a pane; overlay mode must not restore the submitted draft.
+  return ctx.ui.custom<boolean>((tui, _theme, _keybindings, done) => {
+    const focused: unknown = "getFocusedComponent" in tui && typeof tui.getFocusedComponent === "function"
+      ? tui.getFocusedComponent() : undefined;
+    const text = ctx.ui.getEditorText().trim();
+    if (!tui.hasOverlay() && focused instanceof CustomEditor && focused.onSubmit && text && focused.getExpandedText().trim() === text) {
+      focused.setText("");
+      focused.onSubmit(text);
+      done(true);
+    } else {
+      done(false);
+    }
+    return { render: () => [], invalidate() {} };
+  }, { overlay: true });
 }
 
 export function createPiVoiceRuntime(
@@ -218,6 +237,10 @@ export function createPiVoiceRuntime(
     // No pane here to receive an injected manager; pi's global is the same one.
     const keys = new VoiceKeys(getKeybindings());
     stopListening = ctx.ui.onTerminalInput((data) => {
+      if (recording && keys.matches(data, "voice.dictation.stopAndSend")) {
+        void runExclusive(ctx, () => stopAndTranscribe(ctx, { send: true }));
+        return { consume: true };
+      }
       if (recording && keys.matches(data, "voice.dictation.stop")) {
         void runExclusive(ctx, () => stopAndTranscribe(ctx));
         return { consume: true };
@@ -286,7 +309,10 @@ export function createPiVoiceRuntime(
     else ctx.ui.notify(transcriptionErrorMessage(state.cause), "error");
   }
 
-  async function stopAndTranscribe(ctx: ExtensionContext): Promise<void> {
+  async function stopAndTranscribe(
+    ctx: ExtensionContext,
+    { send = false }: { send?: boolean } = {},
+  ): Promise<void> {
     const {
       clearTranscribeWidget,
       formatTranscriptionSummary,
@@ -304,11 +330,15 @@ export function createPiVoiceRuntime(
       if (result?.warning) ctx.ui.notify(result.warning, "warning");
       if (!result) {
         await reportDictationError(ctx, active.dictation);
-      } else if (result.text) {
+      } else if (result.text.trim()) {
         ctx.ui.pasteToEditor(result.text);
+        const submitted = send && !result.interruption && !result.droppedFrames && await submitEditor(ctx);
+        if (send && !submitted) {
+          ctx.ui.notify("Transcript kept in editor; review and press Enter to send", "warning");
+        }
         showTranscribeStatus(
           ctx,
-          formatTranscriptionSummary(result.speechSeconds, result.transcribeSeconds),
+          `${formatTranscriptionSummary(result.speechSeconds, result.transcribeSeconds)}${submitted ? " · submitted" : ""}`,
         );
         keepCompletionVisible = true;
         if (result.interruption) {
@@ -376,10 +406,14 @@ export function createPiVoiceRuntime(
         return;
       }
       const keys = new VoiceKeys(getKeybindings());
-      const stopKeys = [...keys.keys("voice.dictation.stop"), registeredShortcut].join("/");
+      const sendKeys = keys.keys("voice.dictation.stopAndSend");
+      const stopKeys = [...keys.keys("voice.dictation.stop"), registeredShortcut]
+        .filter((key) => !sendKeys.some((sendKey) => sendKey === key)).join("/");
+      const stopHint = stopKeys ? `${rawKeyHint(stopKeys, "to transcribe")}  ` : "";
+      const sendHint = sendKeys.length > 0 ? `${keys.hint("voice.dictation.stopAndSend", "to transcribe and send")}  ` : "";
       meter.start(
         ctx,
-        `${rawKeyHint(stopKeys, "to transcribe")}  ${keys.hint("voice.dictation.cancel", "to discard")}`,
+        `${stopHint}${sendHint}${keys.hint("voice.dictation.cancel", "to discard")}`,
       );
       updateMeter();
       recording = { dictation: controller, meter, unwatch: watchEventLoop() };
