@@ -30,6 +30,8 @@ function defaultChineseOutput(): ChineseOutput {
 /** "auto" uses native detection or the external detector; otherwise a language code. */
 export type TranscriptionLanguage = string;
 
+export type TranscribeFileExposure = "direct" | "deferred";
+
 export type TranscribeSettings = {
   version: 1;
   backend: { type: "transcribe-cpp" };
@@ -42,6 +44,8 @@ export type TranscribeSettings = {
   voiceActivityDetection: boolean;
   /** Hidden, settings.json only: false decodes long audio in one piece, without voice activity cuts. */
   longformChunking: boolean;
+  /** Hidden, settings.json only: how Pi declares transcribe_file to the model. */
+  transcribeFileExposure: TranscribeFileExposure;
   model: {
     source: "catalog";
     id: string;
@@ -149,6 +153,7 @@ function validateSettings(value: unknown): TranscribeSettings | undefined {
     microphone,
     voiceActivityDetection: value.voiceActivityDetection !== false,
     longformChunking: value.longformChunking !== false,
+    transcribeFileExposure: value.transcribeFileExposure === "deferred" ? "deferred" : "direct",
     model: {
       source: "catalog",
       id: value.model.id,
@@ -217,6 +222,7 @@ type ModelSettingsOptions = {
   microphone?: MicrophoneSetting;
   voiceActivityDetection?: boolean;
   longformChunking?: boolean;
+  transcribeFileExposure?: TranscribeFileExposure;
 };
 
 export function settingsForModel(
@@ -243,6 +249,7 @@ export function settingsForModel(
     microphone: { ...(options.microphone ?? DEFAULT_MICROPHONE) },
     voiceActivityDetection: options.voiceActivityDetection ?? true,
     longformChunking: options.longformChunking ?? true,
+    transcribeFileExposure: options.transcribeFileExposure ?? "direct",
     model: { source: "catalog", id: modelId, path: modelPath },
   };
 }

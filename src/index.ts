@@ -15,14 +15,15 @@ import type { PiVoiceRuntime } from "./runtime.js";
 import { displayShortcut, STATUS_WIDGET_KEY } from "./shortcut-core.js";
 import { initLog, log, logStep, markKeyPress, watchEventLoop } from "./log.js";
 import { legacySettingsPath, logPath, settingsPath } from "./settings-path.js";
-import { readShortcutForRegistration } from "./startup-shortcut.js";
+import { readRegistrationSettings } from "./startup-shortcut.js";
 
 // Pi awaits extension module evaluation before continuing startup. Keep this
 // entry point registration-only and load feature implementations on first use.
 export default function piVoice(pi: ExtensionAPI): void {
   // Opens nothing yet: the first line written creates the file.
   initLog({ path: logPath(), level: process.env.PI_VOICE_DEBUG === "1" ? "debug" : "info" });
-  const registeredShortcut = readShortcutForRegistration();
+  const registration = readRegistrationSettings();
+  const registeredShortcut = registration.shortcut;
   let runtimePromise: Promise<PiVoiceRuntime> | undefined;
   let shuttingDown = false;
 
@@ -74,6 +75,7 @@ export default function piVoice(pi: ExtensionAPI): void {
   const fileTranscription = registerFileTranscriptionTool(pi, {
     getSettings: async () => (await loadRuntime()).requireConfiguredSettingsForTool(),
     getService: async () => (await loadRuntime()).service,
+    exposure: registration.transcribeFileExposure,
   });
 
   async function toggleCapture(ctx: ExtensionContext): Promise<void> {

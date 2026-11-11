@@ -7,7 +7,7 @@ import source from "../catalog/catalog.json" with { type: "json" };
 import benchmark from "../catalog/recommendations.json" with { type: "json" };
 import { CATALOG_MODELS } from "../src/catalog.js";
 import { readSettings, settingsForModel, writeSettings } from "../src/settings.js";
-import { readShortcutForRegistration } from "../src/startup-shortcut.js";
+import { readRegistrationSettings } from "../src/startup-shortcut.js";
 
 test("generated catalog matches its source and benchmarks contain no stale model IDs", () => {
   assert.deepEqual(CATALOG_MODELS, source.models);
@@ -60,7 +60,7 @@ test("legacy settings provide the startup shortcut and migrate on full read", as
     "utf8",
   );
 
-  assert.equal(readShortcutForRegistration(), "ctrl+alt+x");
+  assert.equal(readRegistrationSettings().shortcut, "ctrl+alt+x");
   assert.deepEqual((await readSettings()).settings, legacy);
   assert.deepEqual(
     JSON.parse(await readFile(join(directory, "pi-voice.json"), "utf8")),
